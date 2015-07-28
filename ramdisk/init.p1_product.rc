@@ -1,0 +1,53 @@
+on fs
+    mkdir /cust 0771 system system
+    wait /dev/block/platform/f9824900.sdhci/by-name/cust
+    exec /system/bin/e2fsck -y /dev/block/platform/f9824900.sdhci/by-name/cust
+    mount ext4 /dev/block/platform/f9824900.sdhci/by-name/cust /cust rw nosuid nodev barrier=1 noauto_da_alloc
+    restorecon_recursive /cust
+    mount ext4 /dev/block/platform/f9824900.sdhci/by-name/cust /cust ro remount nosuid nodev barrier=1 noauto_da_alloc
+
+on init
+    exec /sbin/setup_fs_static \
+        /dev/block/platform/f9824900.sdhci/by-name/cust \
+        no_reboot
+
+#bohyun, jung - D3-5T-FS@lge.com - capture eMMC cmd log in case of emmc failure
+service mmc_logger /system/bin/mmc_logger
+    class main
+
+#bohyun, jung - TEST purpose for ffu
+service logger_to_sd /system/bin/logger_to_sd
+    class main
+	disabled
+	oneshot
+
+on property:sd_enable=1
+	start logger_to_sd
+
+on post-fs-data
+# NFC local data and nfcee xml storage
+    mkdir /data/nfc 0770 nfc nfc
+    mkdir /data/nfc/param 0770 nfc nfc
+
+# For IPSec
+service ipsecclient /system/bin/ipsecclient
+    class main
+    group system net_admin net_raw
+    disabled
+
+service ipsecstarter /system/bin/ipsecstarter
+    class main
+    user system
+    group system net_admin net_raw
+
+# create callduration file
+on property:ro.lge.callduration=1
+    mkdir /persist-lg/callduration 0770 system radio
+    chown system radio /persist-lg/callduration
+    chmod 0770 /persist-lg/callduration
+
+# LGE IMS Features - To interwork with QMI WMS (64-bit exe/lib)
+service imswmsproxy /system/bin/imswmsproxy
+    class main
+    user system
+    group radio system net_admin net_raw

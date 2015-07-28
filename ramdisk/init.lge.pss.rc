@@ -1,0 +1,32 @@
+service log-pss /system/bin/sh /system/bin/logger_pss.sh
+    class main
+    disabled
+    oneshot
+    seclabel u:r:pss_logger:s0
+
+on property:persist.service.kernel.enable=6
+    restart log-pss
+
+on property:persist.service.kernel.enable=5
+    restart log-pss
+
+on property:persist.service.kernel.enable=4
+    restart log-pss
+
+on property:persist.service.kernel.enable=3
+    restart log-pss
+
+on property:persist.service.kernel.enable=2
+    restart log-pss
+
+on property:persist.service.kernel.enable=1
+    restart log-pss
+
+on property:persist.service.kernel.enable=0
+    stop log-pss
+
+on property:vold.decrypt=trigger_restart_framework
+    restart log-pss
+
+on property:vold.encrypt_progress=0
+    restart log-pss

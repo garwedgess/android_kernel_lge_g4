@@ -1,0 +1,34 @@
+on fota-update
+    export PATH /sbin
+    export ANDROID_ROOT /system
+    export ANDROID_DATA /data
+    export EXTERNAL_STORAGE /sdcard
+
+    symlink /system/etc /etc
+
+    mkdir /sdcard
+    mkdir /system
+    mkdir /cust
+    #mkdir /data
+    mkdir /cache
+    mount /tmp /tmp tmpfs
+
+    #mount rootfs rootfs / rw remount
+
+
+# mount mmc partitions
+	wait /dev/block/bootdevice/by-name/system
+
+	wait /dev/block/bootdevice/by-name/cust
+
+	wait /dev/block/bootdevice/by-name/cache
+	wait /dev/block/bootdevice/by-name/cache
+	wait /dev/block/bootdevice/by-name/cache
+
+	mount_all /fstab.fota
+
+	wait /dev/graphics/fb0
+	wait /dev/tty0
+
+
+	mkdir /cache/fota

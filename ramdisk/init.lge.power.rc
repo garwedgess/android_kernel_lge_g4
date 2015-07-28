@@ -1,0 +1,159 @@
+# Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+# Copyright (c) 2011-2015, LG Electronics Inc. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Code Aurora nor
+#       the names of its contributors may be used to endorse or promote
+#       products derived from this software without specific prior written
+#       permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NON-INFRINGEMENT ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+# llk mode
+on property:persist.sys.store_demo_enabled=1
+   write /sys/class/power_supply/charger_controller/store_demo_enabled 1
+on property:persist.sys.store_demo_enabled=0
+   write /sys/class/power_supply/charger_controller/store_demo_enabled 0
+
+# Power_BSP, chargerlogo
+on chargerlogo
+   trigger early-fs
+   trigger fs
+   trigger post-fs
+   trigger post-fs-data
+   trigger chargerlogo_exec
+
+on chargerlogo_exec
+   setprop persist.service.kernel.enable 4
+   start log-kernel
+   stop bootanim
+   write /sys/class/android_usb/android0/enable 0
+   write /sys/class/android_usb/android0/idVendor 1004
+   write /sys/class/android_usb/android0/idProduct 6300
+   write /sys/class/android_usb/android0/bDeviceClass 0
+   write /sys/class/android_usb/android0/bDeviceSubClass 0
+   write /sys/class/android_usb/android0/bDeviceProtocol 0
+   write /sys/class/android_usb/android0/functions charge_only
+   write /sys/class/android_usb/android0/enable 1
+   write /sys/devices/system/cpu/cpu4/online 0
+   exec /sbin/chargerlogo
+
+# smpl_count
+service smpl_count /system/bin/smpl_count
+   class main
+   user root
+   oneshot
+
+# thermal_monitor
+service thermal_monitor /system/bin/thermal_logging
+   class late_start
+   user system
+   group system
+   disabled
+
+on early-init
+# smpl_count
+symlink /sys/module/lge_smpl_count/parameters/smpl_boot /smpl_boot
+
+on boot
+# Power_BSP, if need, control max_frequencies for peak current issue
+# Power_BSP, LGE raise log level until pr_info for debug
+   write /proc/sys/kernel/printk "7 4 1 7"
+# emotional led
+   chown system system /sys/devices/virtual/lg_rgb_led/use_patterns/blink_patterns
+   chmod 0644 /sys/devices/virtual/lg_rgb_led/use_patterns/blink_patterns
+   chown system system /sys/devices/virtual/lg_rgb_led/use_patterns/input_patterns
+   chmod 0644 /sys/devices/virtual/lg_rgb_led/use_patterns/input_patterns
+   chown system system /sys/devices/virtual/lg_rgb_led/use_patterns/onoff_patterns
+   chmod 0644 /sys/devices/virtual/lg_rgb_led/use_patterns/onoff_patterns
+   chown system system /sys/devices/virtual/lg_rgb_led/use_patterns/setting
+   chmod 0644 /sys/devices/virtual/lg_rgb_led/use_patterns/setting
+   write /sys/devices/virtual/lg_rgb_led/use_patterns/setting 1
+# For QC2.0
+   chown root system /sys/module/charger_controller/parameters/quick_charging_state
+   chmod 0664 /sys/module/charger_controller/parameters/quick_charging_state
+# Power_BSP, for charging mode on/off of Hidden menu
+   chown system system /sys/class/power_supply/battery/charging_enabled
+# Power_BSP, for charging mode on/off of Hidden menu
+   chown system system /sys/class/power_supply/charger_controller/battery_charging_enabled
+# POwer_BSP, for LLK mode on/off of PopupActivity
+   chown system system /sys/class/power_supply/charger_controller/store_demo_enabled
+
+on post-fs-data
+#Power_BSP, thermal senario change about LCD brightness
+   chown system system /sys/class/leds/lcd-backlight/thermald_status
+   chmod 0644 /sys/class/leds/lcd-backlight/thermald_status
+
+# Power_BSP, add battery fake mode property
+on property:persist.service.fakebatt=0
+   write /sys/class/power_supply/charger_controller/pseudo_batt "0 1 100 400 4100 80 1"
+on property:persist.service.fakebatt=1
+   write /sys/class/power_supply/charger_controller/pseudo_batt "1 1 100 400 4100 80 1"
+
+# Power_BSP, add hard reset property
+on property:persist.lge.hardreset=1
+   write /sys/module/msm_poweroff/parameters/hard_reset 1
+on property:persist.lge.hardreset=0
+   write /sys/module/msm_poweroff/parameters/hard_reset 0
+# pm debug mask enable(clock/resume irq)  67
+on boot
+   write /sys/kernel/debug/clk/debug_suspend 1
+
+# Power_BSP, add critical temp property for PM8992
+   on property:persist.service.criticaltemp=0
+   write /sys/kernel/debug/spmi/spmi-0/address 0x00867
+   write /sys/kernel/debug/spmi/spmi-0/data 0x80
+   write /sys/kernel/debug/spmi/spmi-0/address 0x20867
+   write /sys/kernel/debug/spmi/spmi-0/data 0x80
+   write /sys/module/msm_thermal/parameters/reset_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone2/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone3/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone4/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone5/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone6/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone7/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone8/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone9/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone10/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone11/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone12/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone13/ctrl_crit_temp 0
+   write /sys/devices/virtual/thermal/thermal_zone14/ctrl_crit_temp 0
+
+on property:persist.service.criticaltemp=1
+   write /sys/kernel/debug/spmi/spmi-0/address 0x00867
+   write /sys/kernel/debug/spmi/spmi-0/data 0
+   write /sys/kernel/debug/spmi/spmi-0/address 0x20867
+   write /sys/kernel/debug/spmi/spmi-0/data 0
+   write /sys/module/msm_thermal/parameters/reset_temp 170
+   write /sys/devices/virtual/thermal/thermal_zone2/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone3/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone4/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone5/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone6/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone7/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone8/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone9/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone10/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone11/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone12/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone13/ctrl_crit_temp 1
+   write /sys/devices/virtual/thermal/thermal_zone14/ctrl_crit_temp 1
+
