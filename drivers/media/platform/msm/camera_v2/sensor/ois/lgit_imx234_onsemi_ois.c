@@ -3793,6 +3793,7 @@ void lc898122a_e2p_data_read(uint8_t ver)
 
 {
 	CDBG("%s start\n", __func__);
+
 	lc898122a_mem_clear((uint8_t *)&StCalDat, sizeof(stCalDat));
 	if (ver == OIS_VER_DEBUG) {
 		E2pRed((uint16_t)HALL_BIAS_Z, 2, (uint8_t *)&StCalDat.StHalAdj.UsHlzGan); //WitTim(5); Z Hall bias 0x0
@@ -3928,7 +3929,6 @@ void lc898122a_e2p_data_read(uint8_t ver)
 	} else {
 		E2pRed((uint16_t)FW_VERSION_INFO, 2, (uint8_t *)&StCalDat.UsVerDat); //WitTim(5); 0x33
 	}
-
 	CDBG("%s end\n", __func__);
 	return;
 }
@@ -3964,6 +3964,8 @@ int32_t	lc898122a_version_check(void)
 		UcVerLow = 0x02;
 	} else if (UcVerLow == 0x03) {					// 0x02 4th LGIT Act.
 		UcVerLow = 0x03;
+	}else if( UcVerLow == 0x04){
+		UcVerLow = 0x04 ;
 	} else if (UcVerLow == 0x10) {					// 0x10 1rd MTM Act.
 		UcVerLow = 0x10;
 	} else if (UcVerLow == 0x11) {					// 0x11 2nd MTM Act.
@@ -4174,7 +4176,7 @@ void lc898122a_init_servo(void)
 
 	/* High-dimensional correction  */
 	RegWriteA(WH_HOFCON, 0x11);				// 0x0174		OUT 3x3
-	if ((UcVerLow == 0x00) || (UcVerLow == 0x01) || (UcVerLow == 0x02) || (UcVerLow == 0x03)){
+	if( (UcVerLow == 0x00) || (UcVerLow == 0x01) || (UcVerLow == 0x02) || (UcVerLow == 0x03) || (UcVerLow == 0x04) ){
 		/* (0.4531388X^3+0.4531388X)*(0.4531388X^3+0.4531388X) 15ohm*/
 		/* Front */
 		RamWrite32A(sxiexp3, 0x3EE801CF);			// 0x10BA
@@ -4851,8 +4853,14 @@ void SelectPtRange(uint8_t UcSelRange)
 
 #ifdef	CATCHMODE
 	case ON:
+		  if( UcVerLow == 0x04){
+			RamWrite32A( gxlmt3HS0, GYRLMT3_S1_W_C004 ) ;	// 0x1029
+			RamWrite32A( gxlmt3HS1, GYRLMT3_S2_W_C004 ) ;	// 0x102A
+		  }
+		  else{
 		RamWrite32A(gxlmt3HS0, GYRLMT3_S1_W);		// 0x1029
 			RamWrite32A( gxlmt3HS1, GYRLMT3_S2_W ) ;	// 0x102A
+		  }
 			RamWrite32A( gxlmt4HS0, GYRLMT4_S1_W ) ;	// 0x102B	X axis Limiter4 High Threshold0
 			RamWrite32A( gxlmt4HS1, GYRLMT4_S2_W ) ;	// 0x102C	X axis Limiter4 High Threshold1
 			RamWrite32A( Sttx12aH,	GYRA12_HGH_W );		// 0x105F
@@ -4936,6 +4944,9 @@ int32_t	lc898122a_init_gyro_filter(void)
 			pFilHRamDat		= (unsigned char *)CsFilHRamDat_C002;
 		}
 		else if( UcVerLow == 0x03 ){						// UcVerLow == 0x03 // LGIT 4th Act. 141208
+			pFilHRamDat		= (unsigned char *)CsFilHRamDat_C003;
+		}
+		else if( UcVerLow == 0x04 ){
 			pFilHRamDat		= (unsigned char *)CsFilHRamDat_C003;
 		}
 		else{
@@ -5033,6 +5044,9 @@ int32_t	lc898122a_init_gyro_filter(void)
 		pFilReg = (struct STFILREG *)CsFilReg_C002;
 		pFilRam = (struct STFILRAM *)CsFilRam_C002;
 	} else if (UcVerLow == 0x03) { // UcVerLow == 0x03 // LGIT 4th Act. 141208
+		pFilReg = (struct STFILREG *)CsFilReg_C003;
+		pFilRam = (struct STFILRAM *)CsFilRam_C003;
+	}else if( UcVerLow == 0x04){						// UcVerLow == 0x04 // LGIT 4th Act. 150324
 		pFilReg = (struct STFILREG *)CsFilReg_C003;
 		pFilRam = (struct STFILRAM *)CsFilRam_C003;
 	} else if (UcVerLow == 0x10) { // MTM 1st Act
@@ -5147,6 +5161,10 @@ void lc898122a_init_adjust_value(void)
 		RegWriteA(CMSDAC0, BIAS_CUR_OIS_C003);		// 0x0251	Hall DAC Current
 		RegWriteA(OPGSEL0, AMP_GAIN_X_C003);			// 0x0253	Hall amp Gain X
 		RegWriteA(OPGSEL1, AMP_GAIN_Y_C003);			// 0x0254	Hall amp Gain Y
+	}else if( UcVerLow == 0x04 ){						// LGIT 5th
+		RegWriteA( CMSDAC0, BIAS_CUR_OIS_C004 ) ;		// 0x0251	Hall DAC Current
+		RegWriteA( OPGSEL0, AMP_GAIN_X_C004 ) ;			// 0x0253	Hall amp Gain X
+		RegWriteA( OPGSEL1, AMP_GAIN_Y_C004 ) ;			// 0x0254	Hall amp Gain Y
 	} else if (UcVerLow == 0x10) {						//MTM
 		RegWriteA(CMSDAC0, BIAS_CUR_OIS_C010);		// 0x0251	Hall DAC Current
 		RegWriteA(OPGSEL0, AMP_GAIN_X_C010);			// 0x0253	Hall amp Gain X
@@ -5178,6 +5196,9 @@ void lc898122a_init_adjust_value(void)
 	} else if (UcVerLow == 0x03) {						// LGIT 4th Act. 141208
 		RegWriteA(CMSDAC1, BIAS_CUR_AF_C003);		// 0x0252	Hall Dac current
 		RegWriteA(OPGSEL2, AMP_GAIN_AF_C003);		// 0x0255	Hall amp Gain AF
+	}else if( UcVerLow == 0x04 ){						// LGIT 5th Act. 150324
+		RegWriteA( CMSDAC1, BIAS_CUR_AF_C004 ) ;		// 0x0252	Hall Dac current
+		RegWriteA( OPGSEL2, AMP_GAIN_AF_C004 ) ;		// 0x0255	Hall amp Gain AF
 	} else if (UcVerLow == 0x10) {						// MTM
 		RegWriteA(CMSDAC1, BIAS_CUR_AF_C010);		// 0x0252	Hall Dac current
 		RegWriteA(OPGSEL2, AMP_GAIN_AF_C010);		// 0x0255	Hall amp Gain AF
@@ -5307,7 +5328,7 @@ void lc898122a_init_adjust_value(void)
 	RegWriteA( WC_RAMACCXY, 0x01 ) ;			// 0x018D	Filter copy on
 	#endif	//INI_SHORT4
 
-	if ((UcVerLow == 0x00) || (UcVerLow == 0x01) || (UcVerLow == 0x02) || (UcVerLow == 0x03)){
+	if( (UcVerLow == 0x00) || (UcVerLow == 0x01) || (UcVerLow == 0x02) || (UcVerLow == 0x03) || (UcVerLow == 0x04) ){
 		RamWrite32A(sxq, SXQ_INI_LGIT);			// 0x10E5	X axis output direction initial value
 		#ifdef	INI_SHORT4
 		#else	//INI_SHORT4

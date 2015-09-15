@@ -1038,6 +1038,9 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 			pr_err("%s: VFE_CFG_MASK: Invalid length\n", __func__);
 			return -EINVAL;
 		}
+
+        mutex_lock(&vfe_dev->core_mutex); /* LGE_CHANGE, fixed split preview - Case01988342, 2015-05-27, ejoon.kim@lge.com*/
+
 		temp = msm_camera_io_r(vfe_dev->vfe_base +
 			reg_cfg_cmd->u.mask_info.reg_offset);
 
@@ -1045,6 +1048,9 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 		temp |= reg_cfg_cmd->u.mask_info.val;
 		msm_camera_io_w(temp, vfe_dev->vfe_base +
 			reg_cfg_cmd->u.mask_info.reg_offset);
+
+        mutex_unlock(&vfe_dev->core_mutex); /* LGE_CHANGE, fixed split preview - Case01988342, 2015-05-27, ejoon.kim@lge.com*/
+
 		break;
 	}
 	case VFE_WRITE_DMI_16BIT:

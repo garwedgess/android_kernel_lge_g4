@@ -46,6 +46,7 @@
 #define INTERRUPT_MASK_CUSTOM	(0x40000u)
 #define tc_interrupt_status	(tc_device_ctl_base + 0x08u)
 #define tc_interrupt_ctl	(tc_device_ctl_base + 0x09u)
+#define tc_driving_ctl		(tc_device_ctl_base + 0x0au)
 #define tc_sp_ctl		(tc_device_ctl_base + 0x13u)
 #define spr_rst_ctl		(0xc40cu)
 #define spr_flash_crc_ctl	(0xc411u)
@@ -70,6 +71,10 @@
 #define tc_serial_if_ctl			(tc_device_ctl_base + 0x30u)
 #define RAWDATA_ADDR				(0x2a00u)
 #define rawdata_ctl				(0xd629u)
+#define tc_doze1_offset				(tc_device_ctl_base + 0x22u)
+#define tc_doze2_offset				(tc_device_ctl_base + 0x23u)
+#define tc_runinfo				(tc_device_ctl_base + 0x24u)
+
 
 #define CMD_ABT_TCI_ENABLE_CTRL			(tc_device_ctl_base + 0x610)
 #define CMD_ABT_TAP_COUNT_CTRL			(tc_device_ctl_base + 0x611)
@@ -165,6 +170,19 @@ enum {
 enum {
 	SENSOR_STATUS_NEAR = 0,
 	SENSOR_STATUS_FAR,
+};
+
+enum {
+	DOZE1_STATUS = 0,
+	DOZE1_PARTIAL_STATUS,
+	DOZE2_STATUS,
+	DOZE2_DEBUG_STATUS,
+	LOW_POWER_STATUS,
+};
+
+enum {
+	TC_RESTART = 1,
+	TC_STOP,
 };
 
 struct T_TouchInfo {

@@ -149,6 +149,8 @@ struct touch_operation_role {
 	u32     thermal_check;
 	u32	use_hover_finger;
 	u32	use_rmi_dev;
+	u32	use_lpwg_test;
+	u32	mfts_lpwg;
 	u32	palm_ctrl_mode;
 	u32	fw_index;
 	unsigned long	irqflags;
@@ -808,8 +810,8 @@ do {								\
 	TOUCH_D(DEBUG_TRACE, " - %s %d\n", __func__, __LINE__)
 
 
-extern int boot_mode;
 extern int mfts_mode;
+extern int boot_mode;
 extern struct pseudo_batt_info_type pseudo_batt_info;
 
 extern int is_sensing;

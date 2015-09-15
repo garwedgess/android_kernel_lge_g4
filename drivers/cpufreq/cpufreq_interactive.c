@@ -89,7 +89,7 @@ static unsigned int default_above_hispeed_delay[] = {
 #define DEFAULT_GPU_RANGE_END_FREQ		490000000
 #define DEFAULT_GPU_RANGE_ENTER_TIME	1000000
 #define DEFAULT_GPU_RANGE_OUT_TIME		500000
-#define DEFAULT_GPU_MAX_FREQ			600000000
+#define DEFAULT_GPU_MAX_FREQ			0
 
 unsigned int change_target_load = 0;
 u64 gpu_busytime = 0ULL;

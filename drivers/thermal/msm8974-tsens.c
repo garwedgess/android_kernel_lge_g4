@@ -24,9 +24,6 @@
 #include <linux/msm_tsens.h>
 #include <linux/err.h>
 #include <linux/of.h>
-#ifdef CONFIG_LGE_PM
-#include <linux/wakelock.h>
-#endif
 
 #define CREATE_TRACE_POINTS
 #include <trace/trace_thermal.h>
@@ -522,11 +519,6 @@
 #define TSENS4_OFFSET_9640_MASK		0xf0
 #define TSENS4_OFFSET_9640_SHIFT	4
 
-#ifdef CONFIG_LGE_PM
-#define TSENS_WAKE_LOCK_NAME		"msm_tsens_lock"
-#define TSENS_OPERATION_HOLD_TIME	2000
-#endif
-
 enum tsens_calib_fuse_map_type {
 	TSENS_CALIB_FUSE_MAP_8974 = 0,
 	TSENS_CALIB_FUSE_MAP_8X26,
@@ -579,10 +571,6 @@ struct tsens_sensor_dbg_info {
 
 struct tsens_tm_device {
 	struct platform_device		*pdev;
-#ifdef CONFIG_LGE_PM
-	/* Never add member after last member(sensor[0]) */
-	struct wake_lock		wakelock;
-#endif
 	bool				is_ready;
 	bool				prev_reading_avail;
 	bool				calibration_less_mode;
@@ -1156,13 +1144,6 @@ static irqreturn_t tsens_irq_thread(int irq, void *data)
 					tm->sensor[i].sensor_hw_num);
 		}
 	}
-#ifdef CONFIG_LGE_PM
-	if (wake_lock_active(&tmdev->wakelock)) {
-		wake_unlock(&tmdev->wakelock);
-	}
-	wake_lock_timeout(&tmdev->wakelock,
-			msecs_to_jiffies(TSENS_OPERATION_HOLD_TIME));
-#endif
 	/* debug */
 	idx = tmdev->tsens_thread_iq_dbg.idx;
 	tmdev->tsens_thread_iq_dbg.dbg_count[idx%10]++;
@@ -3395,11 +3376,6 @@ static int tsens_tm_probe(struct platform_device *pdev)
 	} else
 		return -ENODEV;
 
-#ifdef CONFIG_LGE_PM
-	wake_lock_init(&tmdev->wakelock, WAKE_LOCK_SUSPEND,
-			TSENS_WAKE_LOCK_NAME);
-#endif
-
 	tmdev->pdev = pdev;
 
 	rc = tsens_calib_sensors();
@@ -3421,9 +3397,6 @@ static int tsens_tm_probe(struct platform_device *pdev)
 
 	return 0;
 fail:
-#ifdef CONFIG_LGE_PM
-	wake_lock_destroy(&tmdev->wakelock);
-#endif
 	if (tmdev->tsens_calib_addr)
 		iounmap(tmdev->tsens_calib_addr);
 	if (tmdev->res_calib_mem)
@@ -3515,9 +3488,6 @@ static int tsens_tm_remove(struct platform_device *pdev)
 		release_mem_region(tmdev->res_tsens_mem->start,
 			tmdev->tsens_len);
 	free_irq(tmdev->tsens_irq, tmdev);
-#ifdef CONFIG_LGE_PM
-	wake_lock_destroy(&tmdev->wakelock);
-#endif
 	platform_set_drvdata(pdev, NULL);
 
 	return 0;

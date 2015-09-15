@@ -94,10 +94,10 @@
 		quickcover.Y2 = <1101>;
 		crack.enable = <0>;
 		crack.min.cap = <300>;
-
+		use_lpwg_test = <1>;
 		/*ghost_detection -S*/
 		ghost_enable = <1>;
-		ghost_detection_chk_cnt = <3>;
+		ghost_chk_cnt = <3>;
 		jitter_value = <20>;
 		ta_noise_chk = <0>;
 		incoming_call_chk = <0>;
@@ -139,7 +139,7 @@
 		reset_control = <3>;
 
 		/*Swipe Down*/
-		swp_down_min_distance = <10>;
+		swp_down_min_distance = <16>;
 		swp_down_ratio_thres = <200>;
 		swp_down_ratio_chk_period = <5>;
 		swp_down_ratio_chk_min_distance = <2>;
@@ -199,8 +199,8 @@
 		/* firmware & panel_spec path */
 		fw_image = "synaptics/p1/PLG446-V1.14-PR1860478-DS5.2.13.1014_4005518E.img",
 					"synaptics/p1/PLG468-V1.05-PR1801483-DS5.2.100.0.1005_50055185.img",
-					"synaptics/p1/PLG446-V1.20-PR1884174-DS5.2.18.1.1004_40055194_v7_2.img", /*PLG446_BL7*/
-					"synaptics/p1/PLG468-V1.19-PR1880917-DS5.2.200.1.1002_50055193504C47343638.img"; /*PLG468_BL7*/
+					"synaptics/p1/PLG446-V1.27-PR1981623-DS5.2.18.1.1006_4005519B_v7_2.img", /*PLG446_BL7*/
+					"synaptics/p1/PLG468-V1.22-PR1982091-DS5.2.200.1.1002_50055196504C47343638.img"; /*PLG468_BL7*/
 		panel_spec = "synaptics/p1/p1_limit.txt";
 		panel_spec_mfts_flat = "synaptics/p1/p1_limit_mfts_flat.txt";
 		panel_spec_mfts_curved = "synaptics/p1/p1_limit_mfts_curved.txt";

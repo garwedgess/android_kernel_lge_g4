@@ -30,6 +30,12 @@ enum qpnp_quick_current_status {
 	QC20_CURRENT_MAX,
 };
 
+enum qpnp_fast_charge_status {
+	FAST_CHARGE_NORMAL,
+	FAST_CHARGE_LIMMITED,
+	FAST_CHARGE_MAX,
+};
+
 enum qpnp_quick_charging_status {
 	QC20_STATUS_NONE,
 	QC20_STATUS_LCD_ON,

@@ -71,6 +71,10 @@ static struct sre_cmds_desc *sre_cmds_set;
 #endif
 //LGE_UPDATE_E (june1014.lee@lge.com. 2015.03.04). SRE
 
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+struct mdss_panel_info *pinfo_store_mode = NULL;
+#endif
+
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	if (ctrl->pwm_pmi)
@@ -2001,6 +2005,35 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	} else {
 		pinfo->blmap = NULL;
 	}
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+	if (pinfo->blmap_size) {
+		array = kzalloc(sizeof(u32) * pinfo->blmap_size, GFP_KERNEL);
+
+		if (!array)
+			return -ENOMEM;
+		rc = of_property_read_u32_array(np,
+			"qcom,blmap_store_mode", array, pinfo->blmap_size);
+
+		if (rc) {
+			pr_err("%s:%d, unable to read backlight map for store_mode\n",
+					__func__, __LINE__);
+			goto error;
+		}
+
+		pinfo->blmap_store_mode = kzalloc(sizeof(int) * pinfo->blmap_size,
+					GFP_KERNEL);
+		if (!pinfo->blmap_store_mode)
+			return -ENOMEM;
+
+		for (i = 0; i < pinfo->blmap_size; i++)
+			pinfo->blmap_store_mode[i] = array[i];
+		pinfo->bl_store_mode = 0;
+
+		kfree(array);
+	} else {
+		pinfo->blmap_store_mode = NULL;
+	}
+#endif
 #endif
 
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-interleave-mode", &tmp);
@@ -2276,6 +2309,44 @@ static struct device_attribute sre_status_attrs[] = {
 #endif
 //LGE_UPDATE_E (june1014.lee@lge.com. 2015.03.04). SRE
 
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+static ssize_t blmap_store_mode_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	if (pinfo_store_mode == NULL) {
+		pr_err("%s: No panel information\n", __func__);
+		return -EINVAL;
+	}
+
+	return sprintf(buf, "%d\n", pinfo_store_mode->bl_store_mode);
+}
+
+static ssize_t blmap_store_mode_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned int param;
+    ssize_t ret = 0;
+
+	if (pinfo_store_mode == NULL) {
+		pr_err("%s: No panel information\n", __func__);
+		return -EINVAL;
+	}
+
+	ret = strnlen(buf, PAGE_SIZE);
+    if( ret>0 ) {
+        sscanf(buf, "%x", &param);
+        pinfo_store_mode->bl_store_mode = param;
+        pr_info("%s: bl_store_mode[%d]\n", __func__, pinfo_store_mode->bl_store_mode);
+    }
+
+	return ret;
+}
+
+static struct device_attribute blmap_adjust_status_attrs[] = {
+	__ATTR(enable, 0644, blmap_store_mode_show, blmap_store_mode_store),
+};
+#endif
+
 int mdss_dsi_panel_init(struct device_node *node,
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata,
 	bool cmd_cfg_cont_splash)
@@ -2347,6 +2418,31 @@ int mdss_dsi_panel_init(struct device_node *node,
 #endif
 //LGE_UPDATE_E (june1014.lee@lge.com. 2015.03.04). SRE
 
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+		{
+			static struct class *blmap_adjust = NULL;
+			static struct device *blmode_sysfs_dev = NULL;
+
+			if(!blmap_adjust) {
+				blmap_adjust = class_create(THIS_MODULE, "blmap_adjust");
+				if (IS_ERR(blmap_adjust))
+					pr_err("%s: Failed to create blmap_adjust class\n", __func__);
+			}
+
+			if ( !blmode_sysfs_dev ) {
+				blmode_sysfs_dev = device_create(blmap_adjust, NULL, 0, NULL, "bl_store_mode");
+				if (IS_ERR(blmode_sysfs_dev)) {
+					pr_err("%s: Failed to create dev(blmode_sysfs_dev)!",
+							__func__);
+				} else {
+					if (device_create_file(blmode_sysfs_dev,
+								&blmap_adjust_status_attrs[0]) < 0)
+						pr_err("%s: Fail!", __func__);
+				}
+			}
+		}
+#endif
+
 	}
 	rc = mdss_panel_parse_dt(node, ctrl_pdata);
 	if (rc) {
@@ -2368,6 +2464,11 @@ int mdss_dsi_panel_init(struct device_node *node,
 	ctrl_pdata->low_power_config = mdss_dsi_panel_low_power_config;
 	ctrl_pdata->panel_data.set_backlight = mdss_dsi_panel_bl_ctrl;
 	ctrl_pdata->switch_mode = mdss_dsi_panel_switch_mode;
+
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+	if (pinfo_store_mode == NULL)
+		pinfo_store_mode = pinfo;
+#endif
 
 	return 0;
 }

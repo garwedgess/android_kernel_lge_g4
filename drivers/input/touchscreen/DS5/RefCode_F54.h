@@ -60,3 +60,12 @@ extern int get_limit(unsigned char Tx,
 		const struct touch_platform_data *pdata,
 		char *breakpoint, int limit_data[32][32]);
 extern int mfts_mode;
+
+enum {
+	RSP_F54_FULL_TEST = 0,
+	RSP_RAW_DATA_PRINT,
+	RSP_DELTA_PRINT,
+	RSP_NOISE_PP_PRINT,
+	RSP_CAL_TEST,
+	RSP_LPWG_RAW_DATA,
+};

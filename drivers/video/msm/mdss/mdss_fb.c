@@ -343,9 +343,20 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 #endif
 
 #if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+    if (mfd->panel_info->bl_store_mode==1) {
+        if (mfd->panel_info->blmap_store_mode)
+            bl_lvl = mfd->panel_info->blmap_store_mode[value];
+    } else {
+        if (mfd->panel_info->blmap)
+            bl_lvl = mfd->panel_info->blmap[value];
+    }
+        pr_info("value(%d) -> bl_lvl(%d)\n", value, bl_lvl);
+#else
 	if (mfd->panel_info->blmap)
 		bl_lvl = mfd->panel_info->blmap[value];
 	pr_info("value(%d) -> bl_lvl(%d)\n", value, bl_lvl);
+#endif
 #else
 	/* This maps android backlight level 0 to 255 into
 	   driver backlight level 0 to bl_max with rounding */
@@ -1640,7 +1651,7 @@ static int mdss_fb_blank_unblank(struct msm_fb_data_type *mfd)
 			{
 				int panel_type = lge_get_panel();
 				if (panel_type == LGD_SIC_INCELL_CMD_PANEL)
-					msleep(35);
+					msleep(20);
 			}
 #endif
 
@@ -3986,6 +3997,22 @@ struct fb_info *msm_fb_get_writeback_fb(void)
 	return NULL;
 }
 EXPORT_SYMBOL(msm_fb_get_writeback_fb);
+
+#ifdef CONFIG_LGE_VSYNC_SKIP
+struct fb_info *msm_fb_get_cmd_pan_fb(void)
+{
+	int c = 0;
+		for (c = 0; c < fbi_list_index; ++c) {
+			struct msm_fb_data_type *mfd;
+			mfd = (struct msm_fb_data_type *)fbi_list[c]->par;
+			if (mfd->panel.type == MIPI_CMD_PANEL){
+				return fbi_list[c];
+			}
+		}
+
+		return NULL;
+}
+#endif
 
 static int mdss_fb_register_extra_panel(struct platform_device *pdev,
 	struct mdss_panel_data *pdata)

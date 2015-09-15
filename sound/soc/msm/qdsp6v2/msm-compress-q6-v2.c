@@ -9,8 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
-
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -58,6 +56,11 @@
 
 /* decoder parameter length */
 #define DDP_DEC_MAX_NUM_PARAM		18
+
+#if defined(CONFIG_SND_LGE_EFFECT) || defined(CONFIG_SND_LGE_NORMALIZER) || defined(CONFIG_SND_LGE_MABL)
+int lgesound_current_be_id = MSM_FRONTEND_DAI_MULTIMEDIA4;
+int lgesound_lge_effect_be_id = MSM_FRONTEND_DAI_MULTIMEDIA4;
+#endif
 
 #ifdef CONFIG_SND_LGE_EFFECT
 #include "lge_dsp_sound_effect.h"
@@ -1464,6 +1467,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 
 		/* issue RUN command for the stream */
 		q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
+
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		spin_lock_irqsave(&prtd->lock, flags);
@@ -1524,6 +1528,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			q6asm_stream_cmd_nowait(ac, CMD_PAUSE, ac->stream_id);
 			atomic_set(&prtd->start, 0);
 		}
+
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		pr_debug("SNDRV_PCM_TRIGGER_PAUSE_RELEASE transition %d\n",
@@ -2196,17 +2201,41 @@ static int msm_compr_volume_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#if defined(CONFIG_SND_LGE_EFFECT) || defined(CONFIG_SND_LGE_NORMALIZER) || defined(CONFIG_SND_LGE_MABL)
+static int lge_dsp_sound_offload_playback_number_put(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	int pcm_device_id = (int)ucontrol->value.integer.value[0];
+
+	lgesound_current_be_id = platform->card->dai_link[pcm_device_id].be_id;
+	if (lgesoundeffect_enable == 1)
+		lgesound_lge_effect_be_id = lgesound_current_be_id;
+
+	pr_debug("%s: pcm_device_id = %d, lgesoundeffect_enable = %d\n", __func__, pcm_device_id, lgesoundeffect_enable);
+	pr_info("%s: current_be_id = %d, lge_effect_be_id = %d\n", __func__, lgesound_current_be_id, lgesound_lge_effect_be_id);
+
+	return 0;
+}
+
+static int lge_dsp_sound_offload_playback_number_get(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	pr_debug("%s: lgesound_current_be_id(%d)\n", __func__, lgesound_current_be_id);
+	//ucontrol->value.integer.value[0] = lgesound_current_be_id;
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_SND_LGE_EFFECT
 static int lge_dsp_sound_effect_enable_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_current_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2248,11 +2277,9 @@ static int lge_dsp_sound_effect_modetype_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -2266,7 +2293,7 @@ static int lge_dsp_sound_effect_modetype_put(struct snd_kcontrol *kcontrol,
 	}
 
 	pr_info("+++++++++++++++++++++++++++++++++++++\n");
-	pr_info("%s: value %d\n", __func__, (int)ucontrol->value.integer.value[0]);
+	pr_info("%s: value %d, be_id %d\n", __func__, (int)ucontrol->value.integer.value[0], lgesound_lge_effect_be_id);
 	pr_info("+++++++++++++++++++++++++++++++++++++\n");
 	if ((lgesoundeffect_allparam == 1) && prtd && prtd->audio_client) {
 		rc = q6asm_set_lgesoundeffect_modetype(prtd->audio_client, (int)ucontrol->value.integer.value[0]);
@@ -2290,11 +2317,9 @@ static int lge_dsp_sound_effect_outputdevicetype_put(struct snd_kcontrol *kcontr
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -2333,11 +2358,9 @@ static int lge_dsp_sound_effect_mediatype_put(struct snd_kcontrol *kcontrol,
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2380,11 +2403,9 @@ static int lge_dsp_sound_effect_geq_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -2424,11 +2445,9 @@ static int lge_dsp_sound_effect_allparam_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 	struct lgesoundeffect_allparam_st all_param = {
@@ -2481,11 +2500,9 @@ static int lge_dsp_sound_normalizer_enable_put(struct snd_kcontrol *kcontrol,
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2527,11 +2544,9 @@ static int lge_dsp_sound_normalizer_devicespeaker_put(struct snd_kcontrol *kcont
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -2571,11 +2586,9 @@ static int lge_dsp_sound_normalizer_makeupgain_put(struct snd_kcontrol *kcontrol
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2618,11 +2631,9 @@ static int lge_dsp_sound_normalizer_prefilter_put(struct snd_kcontrol *kcontrol,
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2665,11 +2676,9 @@ static int lge_dsp_sound_normalizer_limiterthreshold_put(struct snd_kcontrol *kc
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2712,11 +2721,9 @@ static int lge_dsp_sound_normalizer_limiterslope_put(struct snd_kcontrol *kcontr
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2759,11 +2766,9 @@ static int lge_dsp_sound_normalizer_compressorthreshold_put(struct snd_kcontrol 
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2806,11 +2811,9 @@ static int lge_dsp_sound_normalizer_compressorslope_put(struct snd_kcontrol *kco
 {
 #if 0
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 #endif
@@ -2853,11 +2856,9 @@ static int lge_dsp_sound_normalizer_onoff_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -2895,11 +2896,9 @@ static int lge_dsp_sound_normalizer_allparam_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_lge_effect_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 	struct lgesoundnormalizer_allparam_st all_param = {
@@ -2949,11 +2948,9 @@ static int lge_dsp_sound_mabl_devicespeaker_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_current_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -2992,11 +2989,9 @@ static int lge_dsp_sound_mabl_monoenable_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_current_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -3035,11 +3030,9 @@ static int lge_dsp_sound_mabl_lrbalancecontrol_put(struct snd_kcontrol *kcontrol
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_current_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 
@@ -3077,11 +3070,9 @@ static int lge_dsp_sound_mabl_allparam_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
 	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
 			snd_soc_platform_get_drvdata(platform);
-	struct snd_compr_stream *cstream = pdata->cstream[mc->reg];
+	struct snd_compr_stream *cstream = pdata->cstream[lgesound_current_be_id];
 	struct msm_compr_audio *prtd = NULL;
 	int rc;
 	struct lgesoundmabl_allparam_st all_param = {
@@ -3125,6 +3116,11 @@ static int lge_dsp_sound_mabl_allparam_get(struct snd_kcontrol *kcontrol,
 /* System Pin has no volume control */
 static const struct snd_kcontrol_new msm_compr_lge_effect_controls[] = {
 
+#if defined(CONFIG_SND_LGE_EFFECT) || defined(CONFIG_SND_LGE_NORMALIZER) || defined(CONFIG_SND_LGE_MABL)
+	SOC_SINGLE_EXT("Offload Playback Number", 0, 0, 100, 0,
+			lge_dsp_sound_offload_playback_number_get,
+			lge_dsp_sound_offload_playback_number_put),
+#endif
 #ifdef CONFIG_SND_LGE_EFFECT
 	SOC_SINGLE_EXT("Offload Effect Enable",
 			MSM_FRONTEND_DAI_MULTIMEDIA4,

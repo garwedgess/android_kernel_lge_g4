@@ -144,6 +144,10 @@ void lgit_imx234_onsemi_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
 #define		AMP_GAIN_X_C003			0x03		// x75
 #define		AMP_GAIN_Y_C003			0x03		// x75
 
+#define		BIAS_CUR_OIS_C004		0x33		// 2.0mA/2.0mA
+#define		AMP_GAIN_X_C004			0x03		// x75
+#define		AMP_GAIN_Y_C004			0x03		// x75
+
 /* AF adjust parameter */
 #define		BIAS_CUR_AF_C000	0x02		//1.0mA		//LGIT 2nd Act. 141007
 #define		AMP_GAIN_AF_C000	0x03		//x75		//LGIT 2nd Act. 141007
@@ -156,6 +160,9 @@ void lgit_imx234_onsemi_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
 
 #define		BIAS_CUR_AF_C003	0x02		//1.0mA		//LGIT 4th Act. 141208
 #define		AMP_GAIN_AF_C003	0x04		//x100		//LGIT 4th Act. 141208
+
+#define		BIAS_CUR_AF_C004	0x01		//0.5mA		//LGIT 4th Act. 150324
+#define		AMP_GAIN_AF_C004	0x04		//x100		//LGIT 4th Act. 150324
 
 #define		SXQ_INI_LGIT		0xBF800000
 #define		SYQ_INI_LGIT		0xBF800000
@@ -244,6 +251,8 @@ void lgit_imx234_onsemi_ois_init(struct msm_ois_ctrl_t *msm_ois_t);
 /************* Wide *************/
 #define		GYRLMT3_S1_W	0x3F0CCCCD		//0.55F
 #define		GYRLMT3_S2_W	0x3F0CCCCD		//0.55F
+ #define		GYRLMT3_S1_W_C004	0x3F000000		//0.50F
+ #define		GYRLMT3_S2_W_C004	0x3F000000		//0.50F
 #define		GYRLMT4_S1_W	0x40300000		//2.75F
 #define		GYRLMT4_S2_W	0x40300000		//2.75F
 #define		GYRISTP_W		0x3A51B700		/* -62dB */

@@ -204,6 +204,7 @@ struct charger_contr {
 
 	/* pre-defined value by DT*/
 	int current_ibat;
+	int current_ibat_lcd_off;
 	int current_limit;
 	int current_wlc_preset;
 	int current_wlc_limit;
@@ -211,6 +212,8 @@ struct charger_contr {
 	int current_ibat_factory;
 
 	int thermal_status; /* status of lg charging scenario. but not used */
+	int status;
+	int current_status;
 	int batt_temp;
 	int origin_batt_temp;
 	int batt_volt;
@@ -1030,7 +1033,11 @@ static int set_charger_control_current(int limit, int requester)
 		chgr_contr->current_iusb_max = chgr_contr->current_real_usb_psy;
 		chgr_contr->current_ibat_max = chgr_contr->current_ibat;
 		chgr_contr->current_iusb_limit[IUSB_NODE_THERMAL] = cc_iusb_limit;
-		chgr_contr->current_ibat_limit[IBAT_NODE_THERMAL] = cc_ibat_limit;
+		if (chgr_contr->current_status == FAST_CHARGE_NORMAL)
+			chgr_contr->current_ibat_limit[IBAT_NODE_THERMAL] = cc_ibat_limit;
+		else
+			chgr_contr->current_ibat_limit[IBAT_NODE_THERMAL] = min(cc_ibat_limit,
+				chgr_contr->current_ibat_lcd_off);
 		chgr_contr->current_ibat_limit[IBAT_NODE_LGE_CHG] = chgr_contr->ibat_limit_lcs;
 	} else if (chgr_contr->is_wireless) {
 		pr_cc(PR_INFO, "Wireless Current Set!\n");
@@ -1595,18 +1602,22 @@ static int set_quick_charging_state(const char *val, struct kernel_param *kp)
 
 	case QC20_STATUS_LCD_ON:
 		chgr_contr->qc20.status  |= QC20_LCD_STATE;
+		chgr_contr->status  |= QC20_LCD_STATE;
 		break;
 
 	case QC20_STATUS_LCD_OFF:
 		chgr_contr->qc20.status &= ~QC20_LCD_STATE;
+		chgr_contr->status  &= ~QC20_LCD_STATE;
 		break;
 
 	case QC20_STATUS_CALL_ON:
 		chgr_contr->qc20.status  |= QC20_CALL_STATE;
+		chgr_contr->status  |= QC20_CALL_STATE;
 		break;
 
 	case QC20_STATUS_CALL_OFF:
 		chgr_contr->qc20.status  &= ~QC20_CALL_STATE;
+		chgr_contr->status  &= ~QC20_CALL_STATE;
 		break;
 	default:
 		pr_cc(PR_ERR, "[QC20] qpnp_qc20_state_update state err\n");
@@ -1619,9 +1630,16 @@ static int set_quick_charging_state(const char *val, struct kernel_param *kp)
 	else
 		chgr_contr->qc20.current_status = QC20_CURRENT_NORMAL;
 
+	if (chgr_contr->status)
+		chgr_contr->current_status = FAST_CHARGE_LIMMITED;
+	else
+		chgr_contr->current_status = FAST_CHARGE_NORMAL;
 	if (chgr_contr->qc20.is_qc20 && chgr_contr->qc20.is_highvol)
 		notify_charger_controller(&chgr_contr->charger_contr_psy,
 			REQUEST_BY_QC20);
+	else if (chgr_contr->is_usb)
+		notify_charger_controller(&chgr_contr->charger_contr_psy,
+			REQUEST_BY_IBAT_LIMIT);
 
 	return 0;
 }
@@ -1930,6 +1948,10 @@ int lge_battery_get_property(enum power_supply_property prop,
 				(is_usb_present()||is_wireless_present())) {
 			val->intval = POWER_SUPPLY_STATUS_FULL;
 			pr_cc(PR_DEBUG, "Battery full\n");
+		} else if ((get_prop_fuelgauge_capacity() != 100) &&
+				(chgr_contr->batt_eoc == 1)){
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			pr_cc(PR_DEBUG, "Battery waiting for recharging.\n");
 		}
 		/* todo */
 		if ((chgr_contr->batt_temp_state == CC_BATT_TEMP_STATE_HIGH) &&
@@ -2020,6 +2042,16 @@ static int chargercontroller_parse_dt(struct device_node *dev_node, struct charg
 	if (ret) {
 		pr_cc(PR_ERR, "Unable to read current_ibat_max. Set 1600.\n");
 		cc->current_ibat = 1600;
+	}
+
+	ret = of_property_read_u32(dev_node,
+		"lge,chargercontroller-current-ibat-lcd_off",
+		&(cc->current_ibat_lcd_off));
+	pr_cc(PR_DEBUG, "current_ibat_lcd_off = %d from DT\n",
+				cc->current_ibat_lcd_off);
+	if (ret) {
+		pr_cc(PR_ERR, "Unable to read current_ibat_lcd_off. Set 1000.\n");
+		cc->current_ibat_lcd_off = 1000;
 	}
 
 	ret = of_property_read_u32(dev_node, "lge,chargercontroller-current-limit",
@@ -2291,8 +2323,10 @@ if (cc->wireless_psy != NULL) {
 	INIT_DELAYED_WORK(&cc->charging_inform_work, charging_information);
 #endif
 #ifdef CONFIG_LGE_PM_QC20_SCENARIO
-	if (lge_get_boot_mode() == LGE_BOOT_MODE_NORMAL)
+	if (lge_get_boot_mode() == LGE_BOOT_MODE_NORMAL){
 		cc->qc20.status  |= QC20_LCD_STATE;
+		cc->status  |= QC20_LCD_STATE;
+	}
 
 	INIT_DELAYED_WORK(&cc->highvol_check_work, cc_highvol_check_work);
 #endif

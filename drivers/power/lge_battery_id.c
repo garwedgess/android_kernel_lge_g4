@@ -117,6 +117,7 @@ bool lge_battery_check()
 	struct power_supply *psy;
 	union power_supply_propval prop = {0,};
 	uint battery_id;
+	int usb_online;
 
 	psy = power_supply_get_by_name("battery_id");
 	if(psy) {
@@ -127,7 +128,16 @@ bool lge_battery_check()
 		battery_id = BATT_ID_DEFAULT;
 	}
 
-	if(is_factory_cable())
+	psy = power_supply_get_by_name("usb");
+	if(psy) {
+		psy->get_property(psy, POWER_SUPPLY_PROP_ONLINE, &prop);
+		usb_online = prop.intval;
+	} else {
+		pr_info("usb not found. usb online is 0.\n");
+		usb_online = 0;
+	}
+
+	if(is_factory_cable() && usb_online)
 		return true;
 	else
 		return is_battery_valid(battery_id);

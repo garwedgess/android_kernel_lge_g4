@@ -264,4 +264,5 @@ extern void lge_uart_console_set_ready(unsigned int ready);
 extern int msm_serial_set_uart_console(int enable);
 #endif
 
+extern int on_hidden_reset;
 #endif

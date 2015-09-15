@@ -967,21 +967,16 @@ static int pp_vig_pipe_setup(struct mdss_mdp_pipe *pipe, u32 *op)
 			}
 #endif
 #else
-#if !defined(CONFIG_LGE_CAM_PREVIEW_TUNE)
-			if(dmb_status == 1) {
-				mdss_mdp_csc_setup_data(MDSS_MDP_BLOCK_SSPP, pipe->num, &dmb_csc_convert);
-			} else {
-				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num, MDSS_MDP_CSC_YUV2RGB);
-			}
-#else
-			if(dmb_status == 1) {
-				mdss_mdp_csc_setup_data(MDSS_MDP_BLOCK_SSPP, pipe->num, &dmb_csc_convert);
-			} else if(cam_preview_tune_status == 1) {
+#if defined(CONFIG_LGE_CAM_PREVIEW_TUNE)
+			if(cam_preview_tune_status == 1) {
 				mdss_mdp_csc_setup_data(MDSS_MDP_BLOCK_SSPP, pipe->num, &mdp_csc_convert_wideband);
+			} else
+#endif
+			if (dmb_status == 1) {
+				mdss_mdp_csc_setup_data(MDSS_MDP_BLOCK_SSPP, pipe->num, &dmb_csc_convert);
 			} else {
 				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num, MDSS_MDP_CSC_YUV2RGB);
 			}
-#endif
 #endif /* LGE_BROADCAST */
 		}
 	}

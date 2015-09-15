@@ -555,7 +555,7 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 		}
 		xres = get_panel_width(mixer->ctl);
 		is_fbc = pinfo->fbc.enabled;
-		h_total = mdss_panel_get_htotal_ctl(mixer->ctl, false);
+		h_total = mdss_panel_get_htotal(pinfo, false);
 
 		if (is_pingpong_split(mixer->ctl->mfd))
 			h_total += mdss_panel_get_htotal(

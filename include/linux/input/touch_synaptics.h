@@ -249,10 +249,17 @@ struct synaptics_ts_f51_reg {
 	u8 lpwg_touch_slop_reg2;
 	u8 lpwg_tap_distance_reg2;
 	u8 lpwg_interrupt_delay_reg2;
+	u8 overtap_cnt_reg;
+	u8 request_reset_reg;
 	u8 lpwg_partial_reg;
 	u8 lpwg_fail_count_reg;
 	u8 lpwg_fail_index_reg;
 	u8 lpwg_fail_reason_reg;
+	u8 lpwg_adc_offset_reg;
+	u8 lpwg_adc_fF_reg1;
+	u8 lpwg_adc_fF_reg2;
+	u8 lpwg_adc_fF_reg3;
+	u8 lpwg_adc_fF_reg4;
 };
 
 struct synaptics_ts_f54_reg {
@@ -261,6 +268,7 @@ struct synaptics_ts_f54_reg {
 	u8 current_noise_status;
 	u8 cid_im;
 	u8 freq_scan_im;
+	u8 incell_statistic;
 };
 
 struct function_descriptor {
@@ -324,6 +332,8 @@ struct lpwg_control {
 	u8		lpwg_is_enabled;
 	u8		hidden_lpwg_disable;
 	u8		has_debug_module;
+	u8		has_lpwg_overtap_module;
+	u8		has_request_reset_reg;
 	bool		protocol9_sleep_flag;
 	atomic_t	is_suspend;
 };
@@ -451,6 +461,7 @@ struct synaptics_ts_data {
 	struct delayed_work		work_palm;
 	struct delayed_work		work_sleep;
 	struct wake_lock		timer_wake_lock;
+	struct wake_lock		touch_rawdata;
 	struct touch_platform_data	*pdata;
 	const struct state_info		*state;
 	struct state_flag		ts_state_flag;
@@ -484,6 +495,7 @@ int compare_fw_version(struct i2c_client *client,
 /* mode:0 => write_log, mode:1 && buf => cat, mode:2 && buf => delta */
 extern int F54Test(int input, int mode, char *buf);
 extern int GetImageReport(char *buf);
+extern int firmware_upgrade_func_mfts(struct i2c_client *client);
 
 void synaptics_ts_prox_function(struct synaptics_ts_exp_fn *prox_fn,
 		bool insert);

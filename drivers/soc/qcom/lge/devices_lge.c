@@ -666,6 +666,17 @@ int lge_get_bootreason(void)
 	return lge_boot_reason;
 }
 
+int on_hidden_reset;
+
+static int __init lge_check_hidden_reset(char *reset_mode)
+{
+	if (!strncmp(reset_mode, "on", 2))
+		on_hidden_reset = 1;
+
+	return 1;
+}
+__setup("lge.hreset=", lge_check_hidden_reset);
+
 #ifdef CONFIG_LGE_LCD_OFF_DIMMING
 int lge_get_bootreason_with_lcd_dimming(void)
 {

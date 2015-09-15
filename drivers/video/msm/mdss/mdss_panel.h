@@ -415,6 +415,10 @@ struct mdss_panel_info {
 #if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
 	int blmap_size;
 	int *blmap;
+#if defined(CONFIG_LGE_BLMAP_STORE_MODE)
+    int bl_store_mode;
+    int *blmap_store_mode;
+#endif
 #endif
 	bool dynamic_fps;
 	bool ulps_feature_enabled;

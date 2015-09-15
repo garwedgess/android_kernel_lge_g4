@@ -1580,7 +1580,7 @@ static inline u64 cpu_load_sync(int cpu, int sync)
 	return scale_load_to_cpu(load, cpu);
 }
 
-static int
+static __attribute__ ((aligned(4096))) int
 spill_threshold_crossed(struct task_struct *p, struct rq *rq, int cpu,
 			int sync)
 {

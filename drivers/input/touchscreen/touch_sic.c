@@ -42,6 +42,7 @@
 #endif
 static char power_state;
 static int sensor_state;	/* near 0, far 1 */
+static int doze_state;
 
 #define USE_I2C_BURST	1
 
@@ -58,6 +59,7 @@ static int sensor_state;	/* near 0, far 1 */
 #define ACTIVE_AREA_CTRL		10
 #define PARTIAL_LPWG_ON			11
 #define LOW_POWER_CTRL			12
+#define ACTIVE_AREA_RESET_CTRL		13
 
 #define SWIPE_ENABLE_CTRL		30
 #define SWIPE_DISABLE_CTRL		31
@@ -97,7 +99,6 @@ static const char const *sic_swipe_fail_reason_str[] = {
 	"RATIO_FAIL",
 };
 
-static int read_Limit;
 static int sic_mfts_mode;
 /*   0 : normal mode
 	1 : mfts_folder
@@ -108,6 +109,9 @@ static char Write_Buffer[BUFFER_SIZE];
 static u16 sicImage[COL_SIZE][ROW_SIZE];
 static u16 LowerLimit[COL_SIZE][ROW_SIZE];
 static u16 UpperLimit[COL_SIZE][ROW_SIZE];
+static u32 doze1Offset;
+static u32 doze2Offset;
+static u16 runInfo;
 
 int sic_i2c_read(struct i2c_client *client,
 			u16 reg, u8 *data, u32 len)
@@ -302,16 +306,32 @@ static int tci_control(struct sic_ts_data *ts, int type)
 		DO_SAFE(sic_i2c_write(ts->client, CMD_ABT_ACT_AREA_Y2_CTRL,
 					(u8 *)&wdata, sizeof(u32)), error);
 		break;
+	case ACTIVE_AREA_RESET_CTRL:
+		wdata = 0x410041;	/* 65 */
+		DO_SAFE(sic_i2c_write(ts->client, CMD_ABT_ACT_AREA_X1_CTRL,
+					(u8 *)&wdata, sizeof(u32)), error);
+		wdata = 0x55e055e;	/* 1374 */
+		DO_SAFE(sic_i2c_write(ts->client, CMD_ABT_ACT_AREA_X2_CTRL,
+					(u8 *)&wdata, sizeof(u32)), error);
+		wdata = 0x410041;	/* 65 */
+		DO_SAFE(sic_i2c_write(ts->client, CMD_ABT_ACT_AREA_Y1_CTRL,
+					(u8 *)&wdata, sizeof(u32)), error);
+		wdata = 0x9be09be;	/* 2494 */
+		DO_SAFE(sic_i2c_write(ts->client, CMD_ABT_ACT_AREA_Y2_CTRL,
+					(u8 *)&wdata, sizeof(u32)), error);
+		break;
 	case PARTIAL_LPWG_ON:
 		wdata = 0x06;
 		DO_SAFE(sic_i2c_write(ts->client, tc_device_ctl,
 					(u8 *)&wdata, sizeof(u32)), error);
+		doze_state = DOZE1_PARTIAL_STATUS;
 		TOUCH_I("PARTIAL_LPWG_ON Set\n");
 		break;
 	case LOW_POWER_CTRL:
 		wdata = 0x40;
 		DO_SAFE(sic_i2c_write(ts->client, tc_device_ctl,
 					(u8 *)&wdata, sizeof(u32)), error);
+		doze_state = LOW_POWER_STATUS;
 		TOUCH_I("LOW_POWER Set\n");
 		break;
 
@@ -320,6 +340,7 @@ static int tci_control(struct sic_ts_data *ts, int type)
 		wdata = 0x02;
 		DO_SAFE(sic_i2c_write(ts->client, tc_device_ctl,
 					(u8 *)&wdata, sizeof(u32)), error);
+		doze_state = DOZE1_STATUS;
 		TOUCH_I("Doze1 Mode Set\n");
 		break;
 
@@ -328,6 +349,7 @@ static int tci_control(struct sic_ts_data *ts, int type)
 		wdata = ts->debug_mode ? 0x04 : 0x44;
 		DO_SAFE(sic_i2c_write(ts->client, tc_device_ctl,
 					(u8 *)&wdata, sizeof(u32)), error);
+		doze_state = ts->debug_mode ? DOZE2_DEBUG_STATUS : DOZE2_STATUS;
 		TOUCH_I("Doze2 Mode Set\n");
 		break;
 
@@ -496,7 +518,6 @@ error:
 	return -EPERM;
 }
 
-
 static int get_tci_data(struct sic_ts_data *ts, int count)
 {
 	struct i2c_client *client = ts->client;
@@ -533,6 +554,14 @@ static int get_tci_data(struct sic_ts_data *ts, int count)
 	return 0;
 error:
 	return -ERROR;
+}
+
+static void set_tc_driving(struct i2c_client *client, int value)
+{
+	u32 wdata = (u32)value;
+	sic_i2c_write(client, tc_driving_ctl, (u8 *)&wdata, sizeof(u32));
+	TOUCH_I("TC_Driving %s in partial\n",
+		(value == TC_RESTART) ? "Re-Start" : "Stop");
 }
 
 static void set_lpwg_mode(struct lpwg_control *ctrl, int mode)
@@ -661,10 +690,14 @@ static int lpwg_update_all(struct sic_ts_data *ts)
 	int lpwg_status = -1;
 
 	if (ts->lpwg_ctrl.screen) {
-		if (atomic_read(&ts->lpwg_ctrl.is_suspend) ==
-							TC_STATUS_RESUME) {
+		if ((atomic_read(&ts->lpwg_ctrl.is_suspend) ==
+				TC_STATUS_RESUME) &&
+				(ts->is_init == 1)) {
 			/* because of partial
 			   mode change to doze1 from doze1-partial */
+			if (sensor_state == 0)
+				set_tc_driving(ts->client, TC_RESTART);
+			tci_control(ts, ACTIVE_AREA_RESET_CTRL);
 			lpwg_status = 0;
 			TOUCH_I("lpwg_update_all, Doze 1 set\n");
 		} else {
@@ -687,8 +720,7 @@ static int lpwg_update_all(struct sic_ts_data *ts)
 				if (sensor_state == 0) {
 					ic_status = 1;
 				} else {
-					if (atomic_read(&ts->lpwg_ctrl.
-					is_suspend) == TC_STATUS_SUSPEND)
+					if (doze_state == DOZE2_STATUS)
 						ic_status = 2;
 					else
 						lpwg_status =
@@ -716,17 +748,21 @@ static int lpwg_update_all(struct sic_ts_data *ts)
 
 	if (ic_status == 0) {	/* NEAR, no need to LPWG Set */
 		if (atomic_read(&ts->lpwg_ctrl.is_suspend)
-		 == TC_STATUS_SUSPEND) {
+				== TC_STATUS_SUSPEND) {
 			touch_sleep_status(ts->client, 1);
 			tci_control(ts, LOW_POWER_CTRL);
-			sensor_state = 0;
+		} else {
+			set_tc_driving(ts->client, TC_STOP);
 		}
+		sensor_state = 0;
 	} else if (ic_status == 1) {	/* FAR, LPWG Set */
 		if (atomic_read(&ts->lpwg_ctrl.is_suspend)
-		 == TC_STATUS_SUSPEND) {
+				== TC_STATUS_SUSPEND) {
 			touch_sleep_status(ts->client, 0);
-			lpwg_status = ts->lpwg_ctrl.lpwg_mode;
+		} else {
+			set_tc_driving(ts->client, TC_RESTART);
 		}
+		lpwg_status = ts->lpwg_ctrl.lpwg_mode;
 	} else if (ic_status == 2) {
 		sic_ts_power(ts->client, POWER_OFF);
 		sic_ts_power(ts->client, POWER_ON);
@@ -847,6 +883,13 @@ static int get_ic_info(struct sic_ts_data *ts)
 				(u8 *)&ts->fw_info.fw_product_id, 8), error);
 	TOUCH_D(DEBUG_BASE_INFO, "IC_product_id: %s\n",
 			ts->fw_info.fw_product_id);
+
+	DO_SAFE(sic_i2c_read(ts->client, tc_doze1_offset,
+				(u8 *)&doze1Offset, sizeof(u32)), error);
+	DO_SAFE(sic_i2c_read(ts->client, tc_doze2_offset,
+				(u8 *)&doze2Offset, sizeof(u32)), error);
+	DO_SAFE(sic_i2c_read(ts->client, tc_runinfo,
+				(u8 *)&runInfo, sizeof(u32)), error);
 	get_tci_info(ts);
 	get_swipe_info(ts);
 
@@ -857,7 +900,6 @@ error:
 	return -EIO;
 
 }
-
 
 static int get_binFW_version(struct sic_ts_data *ts)
 {
@@ -911,8 +953,17 @@ static ssize_t show_firmware(struct i2c_client *client, char *buf)
 	ret += snprintf(buf+ret, PAGE_SIZE - ret, "IC_fw_version : v%d.%02d\n",
 				ts->fw_info.fw_version[0],
 				ts->fw_info.fw_version[1]);
-	ret += snprintf(buf+ret, PAGE_SIZE - ret, "IC_product_id[%s]\n\n",
+	ret += snprintf(buf+ret, PAGE_SIZE - ret, "IC_product_id[%s]\n",
 				ts->fw_info.fw_product_id);
+	ret += snprintf(buf+ret, PAGE_SIZE - ret, "Run info : %d\n",
+				runInfo);
+	ret += snprintf(buf+ret, PAGE_SIZE - ret,
+			"Offset1 Left : %d, Right : %d\n",
+			(int16_t)doze1Offset, (int16_t)(doze1Offset >> 16));
+	ret += snprintf(buf+ret, PAGE_SIZE - ret,
+			"Offset2 Left : %d, Right : %d\n\n",
+			(int16_t)doze2Offset, (int16_t)(doze2Offset >> 16));
+
 	ret += snprintf(buf+ret, PAGE_SIZE - ret,
 				"=== img_fw_version info ===\n");
 	ret += snprintf(buf+ret, PAGE_SIZE - ret, "Img_fw_version : v%d.%02d\n",
@@ -945,7 +996,7 @@ static ssize_t show_sic_fw_version(struct i2c_client *client, char *buf)
 	ret = snprintf(buf + ret, PAGE_SIZE - ret,
 			"\n======== Auto Touch Test ========\n");
 	ret += snprintf(buf+ret, PAGE_SIZE - ret,
-				"version : v%d.%02d\n",
+				"version : (v%d.%02d)\n",
 				ts->fw_info.fw_version[0],
 				ts->fw_info.fw_version[1]);
 	ret += snprintf(buf+ret, PAGE_SIZE - ret,
@@ -1342,7 +1393,7 @@ static ssize_t get_data(struct sic_ts_data *ts, int16_t *buf, u32 wdata)
 {
 	int i = 0;
 	u32 rdata = 1;
-	int retry = 10;
+	int retry = 40;
 	int __frame_size = ROW_SIZE*COL_SIZE*RAWDATA_SIZE;
 	int read_size = 0;
 
@@ -1356,12 +1407,13 @@ static ssize_t get_data(struct sic_ts_data *ts, int16_t *buf, u32 wdata)
 
 	/* wait until 0 is written */
 	do {
-		msleep(20);
+		msleep(200);
 		DO_SAFE(sic_i2c_read(ts->client,
 			rawdata_ctl, (u8 *)&rdata, sizeof(rdata)), error);
 
 	} while ((rdata != 0) && retry--);
 	/* check whether 0 is written or not */
+
 	if (rdata != 0) {
 		TOUCH_E("== get data time out! ==\n");
 		return -EIO;
@@ -1824,6 +1876,72 @@ error:
 
 }
 
+static int sdcard_spec_file_read(void)
+{
+	int ret = 0;
+	int fd;
+	char *path[4] = { "/mnt/sdcard/p1_limit.txt",
+			"/mnt/sdcard/p1_limit_mfts_folder.txt",
+			"/mnt/sdcard/p1_limit_mfts_flat.txt",
+			"/mnt/sdcard/p1_limit_mfts_curved.txt" };
+	mm_segment_t old_fs = get_fs();
+
+	set_fs(KERNEL_DS);
+	fd = sys_open(path[sic_mfts_mode], O_RDONLY, 0);
+	if (fd >= 0) {
+		sys_read(fd, line, sizeof(line));
+		sys_close(fd);
+		TOUCH_I("%s file existing\n", path[sic_mfts_mode]);
+		ret = 1;
+	}
+	set_fs(old_fs);
+
+	return ret;
+}
+
+static int spec_file_read(struct i2c_client *client)
+{
+	int ret = 0;
+	const struct firmware *fwlimit = NULL;
+	struct sic_ts_data *ts =
+			(struct sic_ts_data *)get_touch_handle(client);
+	const char *path[4] = { ts->pdata->panel_spec,
+			ts->pdata->panel_spec_mfts_folder,
+			ts->pdata->panel_spec_mfts_flat,
+			ts->pdata->panel_spec_mfts_curved };
+
+	if (ts->pdata->panel_spec == NULL
+		|| ts->pdata->panel_spec_mfts_folder == NULL
+		|| ts->pdata->panel_spec_mfts_flat == NULL
+		|| ts->pdata->panel_spec_mfts_curved == NULL) {
+		TOUCH_I("panel_spec_file name is null\n");
+		ret = -1;
+		goto exit;
+	}
+
+	if (request_firmware(&fwlimit, path[sic_mfts_mode],
+		&client->dev) < 0) {
+		TOUCH_I("request ihex is failed in normal mode\n");
+		ret = -1;
+		goto exit;
+	}
+
+	if (fwlimit->data == NULL) {
+		ret = -1;
+		TOUCH_I("fwlimit->data is NULL\n");
+		goto exit;
+	}
+
+	strlcpy(line, fwlimit->data, sizeof(line));
+
+exit:
+	if (fwlimit)
+		release_firmware(fwlimit);
+
+	return ret;
+}
+
+
 int sic_get_limit(unsigned char Tx, unsigned char Rx, struct i2c_client *client,
 		char *breakpoint, u16 limit_data[][ROW_SIZE])
 {
@@ -1834,72 +1952,27 @@ int sic_get_limit(unsigned char Tx, unsigned char Rx, struct i2c_client *client,
 	int ret = 0;
 	int rx_num = 0;
 	int tx_num = 0;
-	const struct firmware *fwlimit = NULL;
 	char *found;
-	struct sic_ts_data *ts =
-			(struct sic_ts_data *)get_touch_handle(client);
 
-	TOUCH_I("breakpoint = [%s]\n", breakpoint);
-	if (ts->pdata->panel_spec == NULL
-		|| ts->pdata->panel_spec_mfts_folder == NULL
-		|| ts->pdata->panel_spec_mfts_flat == NULL
-		|| ts->pdata->panel_spec_mfts_curved == NULL) {
-		TOUCH_I("panel_spec_file name is null\n");
-		ret =  -1;
-		goto exit;
-	}
+	int file_exist = 0;
 
 	if (breakpoint == NULL) {
-		ret =  -1;
+		ret = -1;
 		goto exit;
 	}
 
-	switch (sic_mfts_mode) {
-	case 0:
-		if (request_firmware(&fwlimit, ts->pdata->panel_spec,
-			&client->dev) < 0) {
-			TOUCH_I("request ihex is failed in normal mode\n");
-			ret =  -1;
-			goto exit;
-		}
-		break;
-	case 1:
-		if (request_firmware(&fwlimit,
-				ts->pdata->panel_spec_mfts_folder, &client->dev)
-				< 0) {
-			TOUCH_I("request ihex is failed in mfts_folder mode\n");
-			ret =  -1;
-			goto exit;
-		}
-		break;
-	case 2:
-		if (request_firmware(&fwlimit,
-			ts->pdata->panel_spec_mfts_flat, &client->dev) < 0) {
-			TOUCH_I("request ihex is failed in mfts_flat mode\n");
-			ret =  -1;
-			goto exit;
-		}
-		break;
-	case 3:
-		if (request_firmware(&fwlimit,
-			ts->pdata->panel_spec_mfts_curved, &client->dev) < 0) {
-			TOUCH_I("request ihex is failed in mfts_curved mode\n");
-			ret =  -1;
-			goto exit;
-		}
-		break;
-	default:
-		TOUCH_I("%s : not support mfts_mode\n", __func__);
-		ret =  -1;
-		goto exit;
-		break;
-	}
-	if (fwlimit->data == NULL) {
-		ret =  -1;
+	if (sic_mfts_mode > 3 || sic_mfts_mode < 0) {
+		ret = -1;
 		goto exit;
 	}
 
-	strlcpy(line, fwlimit->data, sizeof(line));
+	file_exist = sdcard_spec_file_read();
+
+	if (!file_exist) {
+		ret = spec_file_read(client);
+		if (ret == -1)
+			goto exit;
+	}
 
 	if (line == NULL) {
 		ret =  -1;
@@ -1943,20 +2016,14 @@ int sic_get_limit(unsigned char Tx, unsigned char Rx, struct i2c_client *client,
 		q++;
 
 		if (r == (int)Tx * (int)Rx) {
-			TOUCH_I("panel_spec_file scanning is success\n");
+			TOUCH_I(
+				"panel_spec_file scanning is success, breakpoint = %s value = %d\n",
+				breakpoint, limit_data[0][0]);
 			break;
 		}
 	}
 
-	if (fwlimit)
-		release_firmware(fwlimit);
-
-	return ret;
-
 exit:
-	if (fwlimit)
-		release_firmware(fwlimit);
-
 	return ret;
 }
 
@@ -1975,39 +2042,22 @@ int prd_compare_rawdata(struct i2c_client *client,
 	int lower_ret = 0;
 	int upper_ret = 0;
 
-	if (!read_Limit) {
-		lower_ret = sic_get_limit(COL_SIZE,
-					ROW_SIZE,
-					client,
-					"LowerImageLimit",
-					LowerLimit);
-		upper_ret = sic_get_limit(COL_SIZE,
-					ROW_SIZE,
-					client,
-					"UpperImageLimit",
-					UpperLimit);
+	lower_ret = sic_get_limit(COL_SIZE,
+				ROW_SIZE,
+				client,
+				"LowerImageLimit",
+				LowerLimit);
+	upper_ret = sic_get_limit(COL_SIZE,
+				ROW_SIZE,
+				client,
+				"UpperImageLimit",
+				UpperLimit);
 
-		if (lower_ret < 0 || upper_ret < 0) {
-			TOUCH_I(
-				"[%s] lower return = %d upper return = %d\n",
-				__func__,
-				lower_ret,
-				upper_ret);
-			TOUCH_I(
-				"[%s][FAIL] Can not check the limit of raw cap\n",
-				__func__);
-			return -ERROR;
-		} else {
-			TOUCH_I(
-				"[%s] lower return = %d upper return = %d\n",
-				__func__,
-				lower_ret,
-				upper_ret);
-			TOUCH_I(
-				"[%s][SUCCESS] Can check the limit of raw cap\n",
-				__func__);
-			read_Limit = 1;
-		}
+	if (lower_ret < 0 || upper_ret < 0) {
+		TOUCH_I(
+			"[%s][FAIL] Can not check the limit of raw cap, lower return = %d upper return = %d\n",
+			__func__, lower_ret, upper_ret);
+		return -ERROR;
 	}
 
 	if (is_prod_test == NORMAL_MODE)
@@ -2066,12 +2116,32 @@ int prd_compare_rawdata(struct i2c_client *client,
 	if (is_prod_test == PRODUCTION_MODE) {
 		ret2 += snprintf(buf + ret2,
 				buffer_length - ret2,
-				"\nmin = %d , max = %d\n", min, max);
+				"\nmin : %d , max : %d\n", min, max);
+		ret2 += snprintf(buf + ret2,
+				buffer_length - ret2,
+				"Offset1 Left : %d , Right : %d\n",
+				(int16_t)doze1Offset,
+				(int16_t)(doze1Offset >> 16));
+		ret2 += snprintf(buf + ret2,
+				buffer_length - ret2,
+				"Offset2 Left : %d , Right : %d\n",
+				(int16_t)doze2Offset,
+				(int16_t)(doze2Offset >> 16));
+		ret2 += snprintf(buf + ret2,
+				buffer_length - ret2,
+				"Run info : %d\n", runInfo);
 		write_file(NULL, buf, 0, 1);
 		ret = result;
 	} else {
 		TOUCH_I("[Rawdata Test] - %s\n", result ? "Fail":"Pass");
 		TOUCH_I("min = %d , max = %d\n", min, max);
+		TOUCH_I("Offset1 Left : %d , Right : %d\n",
+				(int16_t)doze1Offset,
+				(int16_t)(doze1Offset >> 16));
+		TOUCH_I("Offset2 Left : %d , Right : %d\n",
+				(int16_t)doze2Offset,
+				(int16_t)(doze2Offset >> 16));
+		TOUCH_I("Run info : %d\n", runInfo);
 	}
 	return ret;
 }
@@ -2177,10 +2247,13 @@ int write_test_mode(struct i2c_client *client, u8 type)
 			(struct sic_ts_data *)get_touch_handle(client);
 	u32 testmode = 0;
 	u8 doze_mode = 0x1;
-	int retry = 40;
+	int retry = 0;
+	int retry_count = 20;
+	int write_mode_retry = 3;
+
 	u32 rdata = 0x01;
-	int waiting_time = 20;
-	/* default 10ms, adj node short 700ms, Same mux short 2200ms */
+	int waiting_time = 100;
+
 	switch (type) {
 	case OPEN_SHORT_ALL_TEST:
 		waiting_time = 200;
@@ -2190,7 +2263,6 @@ int write_test_mode(struct i2c_client *client, u8 type)
 		break;
 
 	case ADJACENCY_SHORT_TEST:
-		waiting_time = 100;
 		break;
 
 	case SAME_MUX_SHORT_TEST:
@@ -2198,24 +2270,29 @@ int write_test_mode(struct i2c_client *client, u8 type)
 		break;
 
 	case RAWDATA_TEST:
-		waiting_time = 100;
+		retry_count = 5;
 		break;
 	}
 
 	testmode = (doze_mode << 8) | type;
-	/* TestType Set */
-	DO_SAFE(sic_i2c_write(ts->client,
-			tc_tsp_test_mode_ctl,
-			(u8 *)&testmode, sizeof(testmode)), error);
-	TOUCH_I("i2c_write, testmode = %x\n", testmode);
 
-	/* Check Test Result - wait until 0 is written */
-	do {
-		msleep(waiting_time);
-		DO_SAFE(sic_i2c_read(ts->client,
-				tc_tsp_test_mode_sts,
-				(u8 *)&rdata, sizeof(rdata)), error);
-	} while ((rdata != 0) && retry--);
+	/* TestType Set */
+	while ((rdata != 0) && (write_mode_retry != 0)) {
+		DO_SAFE(sic_i2c_write(ts->client,
+				tc_tsp_test_mode_ctl,
+				(u8 *)&testmode, sizeof(testmode)), error);
+		TOUCH_I("i2c_write, testmode = %x\n", testmode);
+		retry = retry_count;
+
+		/* Check Test Result - wait until 0 is written */
+		do {
+			msleep(waiting_time);
+			DO_SAFE(sic_i2c_read(ts->client,
+					tc_tsp_test_mode_sts,
+					(u8 *)&rdata, sizeof(rdata)), error);
+		} while ((rdata != 0) && retry--);
+		write_mode_retry--;
+	}
 
 	if (rdata != 0) {
 		TOUCH_I("ProductionTest Type [%d] Time out\n", type);
@@ -2329,9 +2406,8 @@ static ssize_t show_sd(struct i2c_client *client, char *buf)
 		ret = snprintf(buf + ret,
 				PAGE_SIZE - ret,
 				"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n\n");
-		write_file(NULL,
-			"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n\n",
-			0, 1);
+		write_file(NULL, buf, 0, 1);
+		TOUCH_I("%s : %s", __func__, buf);
 		return ret;
 	}
 	/* firmware version log */
@@ -2373,9 +2449,10 @@ static ssize_t show_rawdata(struct i2c_client *client, char *buf)
 	struct sic_ts_data *ts =
 			(struct sic_ts_data *)get_touch_handle(client);
 	int ret = 0;
+	int ret2 = 0;
 	u8 type = RAWDATA_TEST;
 
-	if (atomic_read(&ts->lpwg_ctrl.is_suspend) && !(ts->debug_mode)) {
+	if (doze_state == DOZE2_STATUS) {
 		ret = snprintf(buf + ret,
 				PAGE_SIZE - ret,
 				"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n");
@@ -2384,8 +2461,8 @@ static ssize_t show_rawdata(struct i2c_client *client, char *buf)
 
 	sic_ts_init_prod_test(ts);
 
-	ret = write_test_mode(client, type);
-	if (ret < 0) {
+	ret2 = write_test_mode(client, type);
+	if (ret2 < 0) {
 		TOUCH_E("Test fail (Check if LCD is OFF)\n");
 		sic_ts_exit_prod_test(ts);
 		return ret;
@@ -2404,34 +2481,35 @@ static ssize_t store_rawdata(struct i2c_client *client,
 	struct sic_ts_data *ts =
 			(struct sic_ts_data *)get_touch_handle(client);
 	int ret = 0;
+	int value;
 	int i;
 	int j;
 	u8 type = RAWDATA_TEST;
-	char temp_buf[PATH_SIZE];
 	char data_path[PATH_SIZE] = {0,};
 	char *read_buf;
 
-	if (atomic_read(&ts->lpwg_ctrl.is_suspend) && !(ts->debug_mode)) {
+	if (sscanf(buf, "%d", &value) <= 0)
+		return count;
+
+	if (doze_state == DOZE2_STATUS) {
 		TOUCH_E(
 			"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n");
-		return ret;
+		return count;
 	}
 
 	read_buf = kzalloc(sizeof(u8)*PAGE_SIZE, GFP_KERNEL);
 	if (read_buf == NULL) {
 		TOUCH_E("read_buf mem_error\n");
-		return -ENOMEM;
+		return count;
 	}
-	snprintf(temp_buf, strlen(buf), "%s", buf);
-	snprintf(data_path, PATH_SIZE, "/sdcard/%s.csv", temp_buf);
+	snprintf(data_path, PATH_SIZE, "/sdcard/%d.csv", value);
 	TOUCH_I("data_path : %s\n", data_path);
 
 	sic_ts_init_prod_test(ts);
 	ret = write_test_mode(client, type);
 	if (ret < 0) {
 		TOUCH_E("Test fail (Check if LCD is OFF)\n");
-		sic_ts_exit_prod_test(ts);
-		return -ERROR;
+		goto error;
 	}
 	prd_frame_read(client);
 
@@ -2441,14 +2519,74 @@ static ssize_t store_rawdata(struct i2c_client *client,
 					"%5d,", sicImage[i][j]);
 		}
 	}
-
-	sic_ts_exit_prod_test(ts);
 	write_file(data_path, read_buf, 0, 0);
+error:
+	sic_ts_exit_prod_test(ts);
 
 	if (read_buf != NULL)
 		kfree(read_buf);
 
 	return count;
+}
+
+static ssize_t show_fdata(struct i2c_client *client, char *buf)
+{
+	struct sic_ts_data *ts =
+			(struct sic_ts_data *)get_touch_handle(client);
+	int ret = 0;
+	int ret2 = 0;
+	int16_t *rawdata = NULL;
+	int i = 0;
+	int j = 0;
+
+	if (doze_state == DOZE2_STATUS) {
+		ret = snprintf(buf + ret,
+				PAGE_SIZE - ret,
+				"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n");
+		return ret;
+	}
+
+	rawdata = kzalloc(sizeof(int16_t) * (COL_SIZE*ROW_SIZE), GFP_KERNEL);
+
+	if (rawdata == NULL) {
+		TOUCH_E("mem_error\n");
+		return ret;
+	}
+
+	ret = snprintf(buf, PAGE_SIZE, "======== rawdata ========\n");
+
+	ret2 = get_data(ts, rawdata, 1);  /* 2 == deltadata */
+	if (ret2 < 0) {
+		TOUCH_E("Test fail (Check if LCD is OFF)\n");
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+				"Test fail (Check if LCD is OFF)\n");
+		goto error;
+	}
+
+	for (i = 0 ; i < COL_SIZE ; i++) {
+		char log_buf[LOG_BUF_SIZE] = {0,};
+		int log_ret = 0;
+
+		ret += snprintf(buf + ret, PAGE_SIZE - ret, "[%2d] ", i);
+		log_ret += snprintf(log_buf + log_ret,
+					LOG_BUF_SIZE - log_ret, "[%2d]  ", i);
+
+		for (j = 0 ; j < ROW_SIZE ; j++) {
+			ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"%5d ", rawdata[i*ROW_SIZE+j]);
+			log_ret += snprintf(log_buf + log_ret,
+						LOG_BUF_SIZE - log_ret, "%5d ",
+						rawdata[i*ROW_SIZE+j]);
+		}
+		ret += snprintf(buf + ret, PAGE_SIZE - ret, "\n");
+		TOUCH_I("%s\n", log_buf);
+	}
+
+error:
+	if (rawdata != NULL)
+		kfree(rawdata);
+
+	return ret;
 }
 
 static ssize_t show_delta(struct i2c_client *client, char *buf)
@@ -2461,7 +2599,7 @@ static ssize_t show_delta(struct i2c_client *client, char *buf)
 	int i = 0;
 	int j = 0;
 
-	if (atomic_read(&ts->lpwg_ctrl.is_suspend) && !(ts->debug_mode)) {
+	if (doze_state == DOZE2_STATUS) {
 		ret = snprintf(buf + ret,
 				PAGE_SIZE - ret,
 				"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n");
@@ -2472,7 +2610,7 @@ static ssize_t show_delta(struct i2c_client *client, char *buf)
 
 	if (delta == NULL) {
 		TOUCH_E("delta mem_error\n");
-		return -ENOMEM;
+		return ret;
 	}
 
 	ret = snprintf(buf, PAGE_SIZE, "======== Deltadata ========\n");
@@ -2482,7 +2620,7 @@ static ssize_t show_delta(struct i2c_client *client, char *buf)
 		TOUCH_E("Test fail (Check if LCD is OFF)\n");
 		ret += snprintf(buf + ret, PAGE_SIZE - ret,
 				"Test fail (Check if LCD is OFF)\n");
-		return ret;
+		goto error;
 	}
 
 	for (i = 0 ; i < COL_SIZE ; i++) {
@@ -2504,6 +2642,7 @@ static ssize_t show_delta(struct i2c_client *client, char *buf)
 		TOUCH_I("%s\n", log_buf);
 	}
 
+error:
 	if (delta != NULL)
 		kfree(delta);
 
@@ -2515,10 +2654,11 @@ static ssize_t show_open_short(struct i2c_client *client, char *buf)
 	struct sic_ts_data *ts =
 			(struct sic_ts_data *)get_touch_handle(client);
 	int ret = 0;
+	int ret2 = 0;
 	u8 type = OPEN_SHORT_ALL_TEST;
 	u32 result;
 
-	if (atomic_read(&ts->lpwg_ctrl.is_suspend) && !(ts->debug_mode)) {
+	if (doze_state == DOZE2_STATUS) {
 		ret = snprintf(buf + ret,
 				PAGE_SIZE - ret,
 				"state=[suspend]. we cannot use I2C, now. Test Result: Fail\n");
@@ -2527,11 +2667,11 @@ static ssize_t show_open_short(struct i2c_client *client, char *buf)
 
 	sic_ts_init_prod_test(ts);
 
-	ret = write_test_mode(client, type);
-	if (ret < 0) {
+	ret2 = write_test_mode(client, type);
+	if (ret2 < 0) {
 		TOUCH_E("Test fail (Check if LCD is OFF)\n");
 		sic_ts_exit_prod_test(ts);
-		return 1;
+		return ret;
 	}
 
 	DO_SAFE(sic_i2c_read(ts->client,
@@ -2553,11 +2693,9 @@ static ssize_t show_open_short(struct i2c_client *client, char *buf)
 		ret += snprintf(buf + ret, PAGE_SIZE - ret,
 			"[open_short test Pass]\n");
 	}
-
+error:
 	sic_ts_exit_prod_test(ts);
 	return ret;
-error:
-	return -ERROR;
 }
 
 static ssize_t show_mfts_mode(struct i2c_client *client, char *buf)
@@ -2576,7 +2714,6 @@ static ssize_t store_mfts_mode(struct i2c_client *client,
 		return count;
 
 	sic_mfts_mode = value;
-	read_Limit = 0;
 	TOUCH_I("mfts_mode:%d\n", sic_mfts_mode);
 
 	return count;
@@ -2740,7 +2877,8 @@ static ssize_t store_fw_dump(struct i2c_client *client,
 
 	set_fs(old_fs);
 
-	kfree(pDump);
+	if (pDump != NULL)
+		kfree(pDump);
 
 	sic_ts_power(ts->client, POWER_OFF);
 	sic_ts_power(ts->client, POWER_ON);
@@ -2752,8 +2890,11 @@ static ssize_t store_fw_dump(struct i2c_client *client,
 	return count;
 
 error:
-	return -ERROR;
+	if (pDump != NULL)
+		kfree(pDump);
+	return count;
 }
+
 static LGE_TOUCH_ATTR(firmware, S_IRUGO | S_IWUSR, show_firmware, NULL);
 static LGE_TOUCH_ATTR(testmode_ver, S_IRUGO | S_IWUSR, show_atcmd_fw_ver, NULL);
 static LGE_TOUCH_ATTR(version, S_IRUGO | S_IWUSR,
@@ -2763,6 +2904,7 @@ static LGE_TOUCH_ATTR(reg_ctrl, S_IRUGO | S_IWUSR, NULL, store_reg_ctrl);
 static LGE_TOUCH_ATTR(object_report, S_IRUGO | S_IWUSR,
 			show_object_report, store_object_report);
 static LGE_TOUCH_ATTR(rawdata, S_IRUGO | S_IWUSR, show_rawdata, store_rawdata);
+static LGE_TOUCH_ATTR(fdata, S_IRUGO | S_IWUSR, show_fdata, NULL);
 static LGE_TOUCH_ATTR(open_short, S_IRUGO | S_IWUSR, show_open_short, NULL);
 static LGE_TOUCH_ATTR(delta, S_IRUGO | S_IWUSR, show_delta, NULL);
 static LGE_TOUCH_ATTR(debug_mode, S_IRUGO | S_IWUSR,
@@ -2796,6 +2938,7 @@ static struct attribute *sic_ts_attribute_list[] = {
 	&lge_touch_attr_testmode_ver.attr,
 	&lge_touch_attr_version.attr,
 	&lge_touch_attr_rawdata.attr,
+	&lge_touch_attr_fdata.attr,
 	&lge_touch_attr_delta.attr,
 	&lge_touch_attr_debug_mode.attr,
 	&lge_touch_attr_tci_fail_reason.attr,
@@ -3126,7 +3269,8 @@ int check_tci_debug_result(struct sic_ts_data *ts, u8 wake_up_type)
 			wake_up_type == TCI_FAIL_DEBUG) {
 			TOUCH_I("TCI(2) OverTap Detected\n");
 			ts->pw_data.data_num = 1;
-			get_tci_data(ts, 1);
+			ts->pw_data.data[0].x = 0;
+			ts->pw_data.data[0].y = 0;
 			send_uevent_lpwg(ts->client, LPWG_PASSWORD);
 			break;
 		}
@@ -3340,6 +3484,7 @@ enum error_type sic_ts_init(struct i2c_client *client)
 	DO_SAFE(lpwg_control(ts, is_suspend ? mode : 0), error);
 
 	ts->is_init = 1;
+	doze_state = DOZE1_STATUS;
 	TOUCH_D(DEBUG_BASE_INFO, "%s end\n", __func__);
 	return NO_ERROR;
 error:
@@ -3573,6 +3718,13 @@ enum error_type sic_ts_get_data(struct i2c_client *client,
 				}
 
 				ts_interrupt_clear(ts);
+				return NO_ERROR;
+			}
+
+			/* check if doze_mode is doze1 */
+			if (doze_state != DOZE1_STATUS) {
+				TOUCH_I("Don't report ABS except doze1\n");
+				memset(curr_data, 0, sizeof(struct touch_data));
 				return NO_ERROR;
 			}
 
@@ -4170,9 +4322,7 @@ enum error_type sic_ts_power(struct i2c_client *client, int power_ctrl)
 }
 
 enum error_type sic_ts_ic_ctrl(struct i2c_client *client,
-								u8 code,
-								u32 value,
-								u32 *ret)
+				u8 code, u32 value, u32 *ret)
 {
 	struct sic_ts_data *ts
 		= (struct sic_ts_data *)get_touch_handle(client);
@@ -4188,6 +4338,7 @@ enum error_type sic_ts_ic_ctrl(struct i2c_client *client,
 				addr, (u8 *)ret, sizeof(u32)), error);
 		break;
 	case IC_CTRL_RESET:
+		ts->is_init = 0;
 		wdata = 0xCACA0010;
 		DO_SAFE(sic_i2c_write(ts->client, tc_device_ctl,
 					(u8 *)&wdata, sizeof(u32)), error);

@@ -30,6 +30,7 @@
 #define REPORT_DATA_OFFEST 3
 #define VERSION "1.0"
 
+#define MAX_CAL_DATA_SIZE	(32*18)
 
 unsigned int count;
 const int DefaultTimeout = 30; /* In counts*/
@@ -187,6 +188,8 @@ int RspAvgImage[32][18];
 int oneDArray[50][576];
 int twoDShortArray[32][18];
 int shortArray[576];
+int coarse[MAX_CAL_DATA_SIZE];
+int fine[MAX_CAL_DATA_SIZE];
 
 enum EReportType {
 	eRT_Image = 20, /* Full Raw Capacitance with Receiver Offset Removed */
@@ -3463,22 +3466,9 @@ int RspDisplayRawData(char *buf)
 	int ret = 0;
 	int r = 0;
 	int c = 0;
-	int f = 0;
 
 	TOUCH_I(
 		"[%s] Start Touch Raw Data Display\n", __func__);
-
-	memset(RspAvgImage, 0, sizeof(RspAvgImage));
-
-	/* Sum up all 50 frames for each pixel */
-	for (f = 0; f < RSP_COLLECT_FRAMES; f++) {
-		for (r = 0; r < RSP_MAX_ROW; r++) {
-			for (c = 0; c < RSP_MAX_COL; c++) {
-				RspAvgImage[r][c] +=
-					abs(RspImageStack[f][r][c]);
-			}
-		}
-	}
 
 	/* Divid each pixel by 50 for average & save average raw data*/
 	ret += snprintf(buf+ret, PAGE_SIZE - ret,
@@ -3496,15 +3486,15 @@ int RspDisplayRawData(char *buf)
 
 	for (r = 0; r < RSP_MAX_ROW; r++) {
 		for (c = 0; c < RSP_MAX_COL; c++) {
-			RspAvgImage[r][c] /= RSP_COLLECT_FRAMES;
 			ret += snprintf(buf + ret, PAGE_SIZE - ret, "%5d ",
-					RspAvgImage[r][c]);
+					RspRawImage[r][c]);
 		}
 		ret += snprintf(buf+ret, PAGE_SIZE - ret, "\n");
 	}
 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret,
 				"------------------------------------------------------------------------------------------------------------\n");
+	memset(RspRawImage, 0, sizeof(RspRawImage));
 	return ret;
 }
 
@@ -3543,29 +3533,410 @@ int RspDisplayNoiseP2P(char *buf)
 	return ret;
 }
 
+int RspCalTest(char *buf)
+{
+	bool isPassed = true;
+	int f = 0;
+	int c = 0;
+	int r = 0;
+	int fine_upper_limit = 10;
+	TOUCH_I("%s\n", __func__);
+
+	f54len = 0;
+
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"RSP Coarse Calibration Data :\n");
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\nInfo: RSP Row = %d Col = %d\n",
+			(int)TxChannelCount, (int)RxChannelCount);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"==========================================================================================================\n		  :");
+
+	for (r = 0; r < (int)RxChannelCount; r++)
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"%5d ", r);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\n----------------------------------------------------------------------------------------------------------\n");
+
+	for (r = 0; r < RSP_MAX_ROW; r++) {
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"	 %5d : ", r);
+		for (c = 0; c < RSP_MAX_COL; c++) {
+
+			f54len += snprintf(f54buf + f54len,
+					sizeof(f54buf) - f54len,
+					"%5d ",
+					coarse[f++]);
+		}
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"\n");
+	}
+
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"------------------------------------------------------------------------------------------------------------\n");
+
+	write_log(NULL, f54buf);
+	f54len = 0;
+
+	f = 0;
+	for (r = 0; r < RSP_MAX_ROW; r++) {
+		for (c = 0; c < RSP_MAX_COL; c++) {
+			if (c >= 2 && c <= 15){
+				if (coarse[f] != 0) {
+					f54len += snprintf(f54buf + f54len,
+							sizeof(f54buf) - f54len,
+							"RSP Coarse Fail area : Row [%2d] Col [%2d] Value : %3d\n",
+							r, c, coarse[f]);
+					isPassed = false;
+				}
+			}
+			f++;
+		}
+	}
+
+	write_log(NULL, f54buf);
+	f54len = 0;
+
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"RSP Fine Calibration Data :\n");
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\nInfo: RSP Row = %d Col = %d\n",
+			(int)TxChannelCount, (int)RxChannelCount);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\nInfo: fine upper limit = %d\n", fine_upper_limit);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"==========================================================================================================\n		  :");
+
+	for (r = 0; r < (int)RxChannelCount; r++)
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"%5d ", r);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\n----------------------------------------------------------------------------------------------------------\n");
+
+	f = 0;
+	for (r = 0; r < RSP_MAX_ROW; r++) {
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"	 %5d : ", r);
+		for (c = 0; c < RSP_MAX_COL; c++) {
+
+			f54len += snprintf(f54buf + f54len,
+					sizeof(f54buf) - f54len,
+					"%5d ",
+					fine[f++]);
+		}
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"\n");
+	}
+
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"------------------------------------------------------------------------------------------------------------\n");
+
+	write_log(NULL, f54buf);
+	f54len = 0;
+
+	f = 0;
+	for (r = 0; r < RSP_MAX_ROW; r++) {
+		for (c = 0; c < RSP_MAX_COL; c++) {
+			if (c >= 2 && c <= 15){
+				if (fine[f] > fine_upper_limit) {
+					f54len += snprintf(f54buf + f54len,
+							sizeof(f54buf) - f54len,
+							"RSP Coarse Fail area : Row [%2d] Col [%2d] Value : %3d\n",
+							r, c, fine[f]);
+					isPassed = false;
+				}
+			}
+			f++;
+		}
+	}
+
+	if (isPassed) {
+		TOUCH_I("RSP Cal Test passed.");
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"RSP Cal Test passed.\n\n\n");
+	} else {
+		TOUCH_I("RSP Cal Test failed.\n");
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"RSP Cal Test failed.\n\n\n");
+	}
+	write_log(NULL, f54buf);
+	TOUCH_I("RSP Cal Test - Completed\n");
+	return (isPassed) ? 1 : 0;
+
+}
+
+int RspReadCal(void)
+{
+	int ret = 0;
+	u8 buffer = 0;
+	u8 dummy_buffer[MAX_CAL_DATA_SIZE * 2] = {0};
+	int err = 0;
+	int retry_cnt = 0;
+	int freq = 0;
+	int i = 0;
+
+	for (freq = 0; freq < 4; freq++) {
+		TOUCH_I("Freq = %d \n", freq);
+		buffer = 0x01;
+
+		/* Send Get Report Command */
+		err = Write8BitRegisters(F54CommandBase, &buffer, 1);
+		if (err < 0) {
+			TOUCH_E("Failed to write F54 CMD Base\n");
+			goto error;
+		}
+
+		/* waiting clear get report bit */
+		retry_cnt = 1000;
+		do {
+			err = Read8BitRegisters(F54CommandBase, &buffer, 1);
+			if (err < 0) {
+				TOUCH_E("Failed to write F54 CMD Base\n");
+				goto error;
+			}
+
+			buffer = (buffer & 0x01);
+			usleep(10000);
+			retry_cnt--;
+
+			if (retry_cnt <= 0) {
+				TOUCH_E("Fail to Read Get Report type.\n");
+				goto error;
+			}
+		} while (buffer);
+
+		if (freq == 3) {
+			/* Drop Dummy Data */
+			Read8BitRegisters(F54DataBase + 3, dummy_buffer, 256);
+
+			/* Read Calibration Data */
+			for (i = 0; i < MAX_CAL_DATA_SIZE; i++) {
+				/* [7:0] detail */
+				Read8BitRegisters(F54DataBase + 3, &buffer, 1);
+				/* Coarse [7:4] / Fine [3:0] */
+				Read8BitRegisters(F54DataBase + 3, &buffer, 1);
+				coarse[i] = (buffer & 0xf0) >> 4;
+				fine[i] = (buffer & 0x0f);
+			}
+
+			/* Read ND Calibration Data */
+			Read8BitRegisters(F54DataBase + 3, dummy_buffer, 128);
+		} else {
+			/* Read Calibration Data */
+			Read8BitRegisters(F54DataBase + 3, dummy_buffer, MAX_CAL_DATA_SIZE * 2);
+
+			/* Read ND Calibration Data */
+			Read8BitRegisters(F54DataBase + 3, dummy_buffer, 128);
+		}
+	}
+	TOUCH_I("[%s] End of Test\n", __func__);
+	return ret;
+
+error:
+	TOUCH_E("[%s] Fail to get Calibration Data", __func__);
+	ret = -EIO;
+	return ret;
+
+}
+int RspLpwgRawDataTest(void)
+{
+	bool isPassed = true;
+	int f = 0;
+	int c = 0;
+	int r = 0;
+
+
+	TOUCH_I("%s\n", __func__);
+	memset(RspAvgImage, 0, sizeof(RspAvgImage));
+
+	/* Sum up all 50 frames for each pixel */
+	for (f = 0; f < RSP_COLLECT_FRAMES; f++) {
+		for (r = 0; r < RSP_MAX_ROW; r++) {
+			for (c = 0; c < RSP_MAX_COL; c++) {
+				RspAvgImage[r][c]
+					+= abs(RspImageStack[f][r][c]);
+			}
+		}
+	}
+
+	f54len = 0;
+
+	/* Divid each pixel by 50 for average & save average raw data*/
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"RSP LPWG Raw Capacitance Image Data :\n");
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\nInfo: RSP LPWG Row = %d Col = %d\n",
+			(int)TxChannelCount, (int)RxChannelCount);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"==========================================================================================================\n		  :");
+
+	for (r = 0; r < (int)RxChannelCount; r++)
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"%5d ", r);
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"\n----------------------------------------------------------------------------------------------------------\n");
+
+	for (r = 0; r < RSP_MAX_ROW; r++) {
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"	 %5d : ", r);
+		for (c = 0; c < RSP_MAX_COL; c++) {
+			RspAvgImage[r][c] /= RSP_COLLECT_FRAMES;
+			f54len += snprintf(f54buf + f54len,
+					sizeof(f54buf) - f54len,
+					"%5d ",
+					RspAvgImage[r][c]);
+		}
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"\n");
+	}
+
+	f54len += snprintf(f54buf + f54len,
+			sizeof(f54buf) - f54len,
+			"------------------------------------------------------------------------------------------------------------\n");
+
+	/* Compare the limits */
+	for (r = 0; r < RSP_MAX_ROW; r++) {
+		for (c = 0; c < RSP_MAX_COL; c++) {
+			if (RspAvgImage[r][c]
+					< LowerImageLimit[r][c]
+					|| RspAvgImage[r][c]
+					> UpperImageLimit[r][c]) {
+				f54len += snprintf(f54buf + f54len,
+						sizeof(f54buf) - f54len,
+						"LPWG Failed 2D area : Row [%2d] Col [%2d] Value : %3d\n",
+						r, c, RspAvgImage[r][c]);
+				isPassed = false;
+			}
+		}
+	}
+
+	if (isPassed) {
+		TOUCH_I("RSP LPWG Raw Capacitance Image Test passed.");
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"RSP LPWG Raw Capacitance Image Test passed.\n\n\n");
+	} else {
+		TOUCH_I("RSP LPWG Raw Capacitance Image Test failed.\n");
+		f54len += snprintf(f54buf + f54len,
+				sizeof(f54buf) - f54len,
+				"RSP LPWG Raw Capacitance Image Test failed.\n\n\n");
+	}
+	write_log(NULL, f54buf);
+	TOUCH_I("RSP LPWG Raw Data Test - Completed\n");
+	return (isPassed) ? 1 : 0;
+}
 int GroupNormalTest(int mode, char *buf)
 {
 	int ret = 0;
+	u8 data = 0x1;
+	int count = 0;
+
 	memcpy(LowerImageLimit, LowerImage, sizeof(LowerImageLimit));
 	memcpy(UpperImageLimit, UpperImage, sizeof(UpperImageLimit));
 	memcpy(RspNoiseP2PLimit, RspNoise, sizeof(RspNoiseP2PLimit));
 
-	RspSetFreq(f2);
-	RspSetProductionTest();
-	RspSetReportType(eRT_RSPGroupTest);
-	RspResetReportAddress();
+	switch(mode){
+		case RSP_F54_FULL_TEST:
+			RspSetFreq(f2);
+			RspSetProductionTest();
+			RspSetReportType(eRT_RSPGroupTest);
+			RspResetReportAddress();
 
-	RspCollectRawData();
+			RspCollectRawData();
+			Reset();
+			break;
+		case RSP_RAW_DATA_PRINT:
+			switchPage(0x01);
+			RspSetReportType(3);
+			Write8BitRegisters(F54CommandBase, &data, 1);
+			do {
+				Read8BitRegisters(F54CommandBase, &data, 1);
+				usleep(20000);
+				count++;
+			} while (data != 0x00 && (count < DefaultTimeout));
 
-	Reset();
-	if (mode == 0) {
-		ret = RspGroupTest();
-	} else if (mode == 1) {  /* Display RawData*/
-		ret = RspDisplayRawData(buf);
-	} else if (mode == 2) {  /* Display NoiseP2P */
-		ret = RspDisplayNoiseP2P(buf);
+			RspResetReportAddress();
+			RspReadImageReport();
+			break;
+		case RSP_DELTA_PRINT:
+			switchPage(0x01);
+			RspSetReportType(2);
+			Write8BitRegisters(F54CommandBase, &data, 1);
+			do {
+				Read8BitRegisters(F54CommandBase, &data, 1);
+				usleep(20000);
+				count++;
+			} while (data != 0x00 && (count < DefaultTimeout));
+
+			RspResetReportAddress();
+			RspReadImageReport();
+			break;
+		case RSP_NOISE_PP_PRINT:
+			RspSetFreq(f2);
+			RspSetProductionTest();
+			RspSetReportType(eRT_RSPGroupTest);
+			RspResetReportAddress();
+
+			RspCollectRawData();
+			Reset();
+			break;
+		case RSP_CAL_TEST:
+			RspSetReportType(84);
+			RspResetReportAddress();
+			RspReadCal();
+			break;
+		case RSP_LPWG_RAW_DATA:
+			RspSetFreq(f_LPWG);
+			RspSetProductionTest();
+			RspSetReportType(eRT_RSPGroupTest);
+			RspResetReportAddress();
+
+			RspCollectRawData();
+			break;
+		default:
+			TOUCH_I("[%s] mode = %d\n", __func__, mode);
+			break;
 	}
 
+	if (mode == RSP_F54_FULL_TEST) {
+		ret = RspGroupTest();
+	} else if (mode == RSP_RAW_DATA_PRINT) {  /* Display RawData*/
+		ret = RspDisplayRawData(buf);
+	} else if (mode == RSP_DELTA_PRINT){	/* Display Delta*/
+		ret = RspDisplayRawData(buf);
+	} else if (mode == RSP_NOISE_PP_PRINT) {  /* Display NoiseP2P */
+		ret = RspDisplayNoiseP2P(buf);
+	} else if (mode == RSP_CAL_TEST) {
+		ret = RspCalTest(buf);
+	} else if (mode == RSP_LPWG_RAW_DATA) {
+		ret = RspLpwgRawDataTest();
+	}
 	return ret;
 }
 

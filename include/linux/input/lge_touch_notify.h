@@ -6,9 +6,9 @@
 
 /* the dsv on */
 #define LCD_EVENT_TOUCH_LPWG_ON		0x01
-
 #define LCD_EVENT_TOUCH_LPWG_OFF	0x02
 
+#define LCD_EVENT_TOUCH_PWR_OFF      0XFF
 /* to let lcd-driver know touch-driver's status */
 #define LCD_EVENT_TOUCH_DRIVER_REGISTERED	0x03
 /* For notifying proxy status to operate ENA control in lcd driver*/

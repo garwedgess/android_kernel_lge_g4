@@ -1622,13 +1622,14 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 			} else if (ctrl_pdata->panel_data.panel_info.panel_type
 				== JDI_INCELL_CMD_PANEL) {
 				msleep(50);
-				if (jdi_deep_sleep == 1) {
+				if (proxy_sensor_status == PROXY_NEAR) {
 					int param = 0;
 					pr_info("%s: ACTIVE to DEEP\n",
 						       __func__);
 					touch_notifier_call_chain(
 					LCD_EVENT_TOUCH_SLEEP_STATUS,
 						(void *)&param);
+					jdi_deep_sleep = 1;
 				}
 				lgd_rsp_lcd_on_off = 0;
 			}

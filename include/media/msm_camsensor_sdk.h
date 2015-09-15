@@ -319,6 +319,7 @@ struct region_params_t {
 	int macro_dac;
 	int dac_20;
 	int dac_40;
+	int macro_mecha_end;
 	/* LGE_CHANGE_E*/
 };
 

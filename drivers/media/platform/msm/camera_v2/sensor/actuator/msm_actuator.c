@@ -755,12 +755,15 @@ static int32_t msm_actuator_claf_move_focus(
 			tar_pos = ((a_ctrl->region_params[0].macro_dac - a_ctrl->region_params[0].infinity_dac)*curr_lens_pos)/(a_ctrl->total_steps-50)
 				+ a_ctrl->region_params[0].infinity_dac;
 		else if(curr_lens_pos > 300)
-			tar_pos = ((21000 - a_ctrl->region_params[0].macro_dac)*(curr_lens_pos-300))/50
+			tar_pos = ((a_ctrl->region_params[0].macro_mecha_end - a_ctrl->region_params[0].macro_dac)*(curr_lens_pos-300))/50
 				+ a_ctrl->region_params[0].macro_dac;
 	}
 
-	//pr_err("KSY macro_dac: %d, infinity: %d, tar_pos: %d, a_ctrl->total_steps = %d\n", a_ctrl->region_params[0].macro_dac,
-	//	a_ctrl->region_params[0].infinity_dac, tar_pos, a_ctrl->total_steps);
+	if(tar_pos > a_ctrl->region_params[0].macro_mecha_end)
+		tar_pos = a_ctrl->region_params[0].macro_mecha_end;
+
+	//pr_err("KSY macro_dac: %d, macro_mech: %d, infinity: %d, tar_pos: %d, a_ctrl->total_steps = %d\n", a_ctrl->region_params[0].macro_dac,
+		//a_ctrl->region_params[0].macro_mecha_end, a_ctrl->region_params[0].infinity_dac, tar_pos, a_ctrl->total_steps);
 
 	lc898122a_af_vcm_code(tar_pos);
 
