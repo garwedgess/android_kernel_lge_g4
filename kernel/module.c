@@ -1866,7 +1866,9 @@ static void free_module(struct module *mod)
 
 	/* We leave it in list to prevent duplicate loads, but make sure
 	 * that noone uses it while it's being deconstructed. */
+	mutex_lock(&module_mutex);
 	mod->state = MODULE_STATE_UNFORMED;
+	mutex_unlock(&module_mutex);
 
 	/* Remove dynamic debug info */
 	ddebug_remove_module(mod->name);
@@ -2465,11 +2467,7 @@ static int module_sig_check(struct load_info *info)
 	    memcmp(mod + info->len - markerlen, MODULE_SIG_STRING, markerlen) == 0) {
 		/* We truncate the module to discard the signature */
 		info->len -= markerlen;
-#ifdef CONFIG_MACH_LGE
-		err = 0;
-#else
 		err = mod_verify_sig(mod, &info->len);
-#endif
 	}
 
 	if (!err) {
