@@ -67,4 +67,3 @@ lge-display-mdss-objs += lge/common/vsync_skip.o
 endif
 
 obj-$(CONFIG_FB_MSM_MDSS) += lge-display-mdss.o
-obj-$(CONFIG_FB_MSM_MDSS_KCAL_CTRL) += mdss_mdp_kcal_ctrl.o

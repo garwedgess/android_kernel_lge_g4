@@ -1,4 +1,0 @@
-on init
-    exec u:r:setup_fs:s0 -- /sbin/setup_fs_static \
-        /dev/block/bootdevice/by-name/cache \
-        no_reboot

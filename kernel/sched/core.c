@@ -478,15 +478,7 @@ static void __hrtick_start(void *arg)
 void hrtick_start(struct rq *rq, u64 delay)
 {
 	struct hrtimer *timer = &rq->hrtick_timer;
-	ktime_t time;
-	s64 delta;
-
-	/*
-	 * Don't schedule slices shorter than 10000ns, that just
-	 * doesn't make sense and can cause timer DoS.
-	 */
-	delta = max_t(s64, delay, 10000LL);
-	time = ktime_add_ns(timer->base->get_time(), delta);
+	ktime_t time = ktime_add_ns(timer->base->get_time(), delay);
 
 	hrtimer_set_expires(timer, time);
 
@@ -2947,11 +2939,10 @@ ttwu_do_wakeup(struct rq *rq, struct task_struct *p, int wake_flags)
 		u64 delta = rq->clock - rq->idle_stamp;
 		u64 max = 2*sysctl_sched_migration_cost;
 
-		update_avg(&rq->avg_idle, delta);
-
-		if (rq->avg_idle > max)
+		if (delta > max)
 			rq->avg_idle = max;
-		
+		else
+			update_avg(&rq->avg_idle, delta);
 		rq->idle_stamp = 0;
 	}
 #endif
@@ -4449,8 +4440,8 @@ void scheduler_tick(void)
 	raw_spin_lock(&rq->lock);
 	set_window_start(rq);
 	update_rq_clock(rq);
-	curr->sched_class->task_tick(rq, curr, 0);
 	update_cpu_load_active(rq);
+	curr->sched_class->task_tick(rq, curr, 0);
 	update_task_ravg(rq->curr, rq, TASK_UPDATE, sched_clock(), 0);
 	raw_spin_unlock(&rq->lock);
 

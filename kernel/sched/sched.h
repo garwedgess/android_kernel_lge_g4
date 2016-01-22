@@ -290,7 +290,7 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
-	unsigned long runnable_load_avg, blocked_load_avg;
+	u64 runnable_load_avg, blocked_load_avg;
 	atomic64_t decay_counter, removed_load;
 	u64 last_decay;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
@@ -396,9 +396,6 @@ struct root_domain {
 	struct rcu_head rcu;
 	cpumask_var_t span;
 	cpumask_var_t online;
-
-	/* Indicate more than one runnable task for any CPU */
-	bool overload;
 
 	/*
 	 * The "RT overload" flag: it gets set if a CPU has more than
@@ -1396,20 +1393,15 @@ static inline void inc_nr_running(struct rq *rq)
 	sched_update_nr_prod(cpu_of(rq), 1, true);
 	rq->nr_running++;
 
-	if (rq->nr_running == 2) {
-#ifdef CONFIG_SMP
-		if (!rq->rd->overload)
-			rq->rd->overload = true;
-#endif
-
 #ifdef CONFIG_NO_HZ_FULL
+	if (rq->nr_running == 2) {
 		if (tick_nohz_full_cpu(rq->cpu)) {
 			/* Order rq->nr_running write against the IPI */
 			smp_wmb();
 			smp_send_reschedule(rq->cpu);
 		}
+       }
 #endif
-	}
 }
 
 static inline void dec_nr_running(struct rq *rq)
