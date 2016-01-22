@@ -37,7 +37,7 @@ void brcm_btsleep_wake( enum sleep_type type)
 {
 #ifdef LPM_BLUESLEEP
 //BT_S : fix wrong lpm_param issue, [START]
-    printk("%s - %d\n", __func__, type);
+    //printk("%s - %d\n", __func__, type);
     if(type == SLEEP_BLUESLEEP)
 //         bluesleep_outgoing_data();
          bluetooth_pm_outgoing_data();
@@ -52,7 +52,7 @@ void brcm_btsleep_start(enum sleep_type type)
 {
 #ifdef LPM_BLUESLEEP
 //BT_S : fix wrong lpm_param issue, [START]
-    printk("%s - %d\n", __func__, type);
+    //printk("%s - %d\n", __func__, type);
     if(type == SLEEP_BLUESLEEP)
 //        bluesleep_start();
     {
@@ -71,7 +71,7 @@ void brcm_btsleep_stop(enum sleep_type type)
 {
 #ifdef LPM_BLUESLEEP
 //BT_S : fix wrong lpm_param issue, [START]
-    printk("%s - %d\n", __func__, type);
+    //printk("%s - %d\n", __func__, type);
     if(type == SLEEP_BLUESLEEP)
 //        bluesleep_stop();
         bluetooth_pm_sleep_stop();

@@ -371,6 +371,12 @@ static int kgsl_page_alloc_vmfault(struct kgsl_memdesc *memdesc,
 		}
 
 		if (sg_offset + sg_offset_4k > memdesc->sglen) {
+			KGSL_CORE_ERR("Sg offset over %d %d %d\n",
+					(int)memdesc->size, sg_offset,
+					memdesc->sglen);
+
+			pgoff = offset >> PAGE_SHIFT;
+			s = memdesc->sg;
 			goto orginal_code;
 		}
 

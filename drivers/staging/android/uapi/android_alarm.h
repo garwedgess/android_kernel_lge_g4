@@ -1,6 +1,10 @@
 /* drivers/staging/android/uapi/android_alarm.h
  *
+<<<<<<< HEAD
  * Copyright (C) 2006-2015 Google, Inc.
+=======
+ * Copyright (C) 2006-2007 Google, Inc.
+>>>>>>> aa14351... 20d H815 source push
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and

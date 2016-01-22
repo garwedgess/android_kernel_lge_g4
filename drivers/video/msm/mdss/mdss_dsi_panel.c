@@ -29,6 +29,10 @@
 #include "lge/panel/oem_mdss_dsi_common.h"
 #endif
 
+#ifdef CONFIG_MACH_LGE
+#include <soc/qcom/lge/board_lge.h>
+#endif
+
 #if defined (CONFIG_LGE_DISPLAY_TUNING) || defined(CONFIG_LGE_DISPLAY_DUAL_BACKLIGHT)
 struct mdss_panel_data *pdata_base;
 #endif
@@ -678,6 +682,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
 	struct mdss_panel_info *pinfo;
 	struct dsi_panel_cmds *on_cmds;
+	struct dsi_panel_cmds *rsp_nvm_write;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -703,6 +708,18 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	if (pinfo->lge_pan_info.lge_panel_send_on_cmd == false) {
 		pr_info("%s: skip panel  on cmd, ctrl=%p ndx=%d\n", __func__, ctrl, ctrl->ndx);
 		goto end;
+	}
+#endif
+
+#if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
+	if (pinfo->lge_pan_info.panel_type == LGD_INCELL_CMD_PANEL) {
+		rsp_nvm_write = &ctrl->lge_pan_data->rsp_nvm_write;
+
+		if ((rsp_nvm_write->cmd_cnt) && (ctrl->lge_pan_data->do_rsp_nvm_write == true)) {
+			mdss_dsi_panel_cmds_send(ctrl, rsp_nvm_write);
+			mdelay(1000);
+			ctrl->lge_pan_data->do_rsp_nvm_write = false;
+		}
 	}
 #endif
 
@@ -1402,6 +1419,15 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 	pr_info("%s: ulps during suspend feature %s", __func__,
 		(pinfo->ulps_suspend_enabled ? "enabled" : "disabled"));
 
+#if defined(CONFIG_LGE_MIPI_P1_INCELL_QHD_CMD_PANEL)
+	if(lge_get_panel() == JDI_INCELL_CMD_PANEL) {
+		if (lge_get_boot_mode() == LGE_BOOT_MODE_CHARGERLOGO) {
+			pinfo->ulps_suspend_enabled = true;
+			pr_info("%s:enter chargerlogo, ulps during suspend feature %s\n", __func__, "enabled");
+		}
+	}
+#endif
+
 	mdss_dsi_parse_dms_config(np, ctrl);
 
 	pinfo->panel_ack_disabled = of_property_read_bool(np,
@@ -1697,6 +1723,7 @@ static int mdss_dsi_panel_parse_display_timings(struct device_node *np,
 	timings_np = of_get_child_by_name(np, "qcom,mdss-dsi-display-timings");
 	if (!timings_np) {
 		struct dsi_panel_timing pt;
+		memset(&pt, 0, sizeof(struct dsi_panel_timing));
 
 		/*
 		 * display timings node is not available, fallback to reading
@@ -2001,10 +2028,6 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		pinfo->mode_gpio_state = MODE_GPIO_NOT_VALID;
 	}
 
-	rc = of_property_read_u32(np, "qcom,mdss-dsi-panel-framerate", &tmp);
-	pinfo->mipi.frame_rate = (!rc ? tmp : 60);
-	rc = of_property_read_u32(np, "qcom,mdss-dsi-panel-clockrate", &tmp);
-	pinfo->clk_rate = (!rc ? tmp : 0);
 	rc = of_property_read_u32(np, "qcom,mdss-mdp-transfer-time-us", &tmp);
 	pinfo->mdp_transfer_time_us = (!rc ? tmp : DEFAULT_MDP_TRANSFER_TIME);
 
