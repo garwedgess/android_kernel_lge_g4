@@ -355,6 +355,7 @@ struct sock {
                 sk_no_check  : 2,
                 sk_userlocks : 4,
                 sk_protocol  : 8,
+#define SK_PROTOCOL_MAX U8_MAX
                 sk_type      : 16;
     kmemcheck_bitfield_end(flags);
     int            sk_wmem_queued;
@@ -677,6 +678,8 @@ enum sock_flags {
     SOCK_MPTCP, /* MPTCP set on this socket */
 #endif
 };
+
+#define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
 
 static inline void sock_copy_flags(struct sock *nsk, struct sock *osk)
 {
