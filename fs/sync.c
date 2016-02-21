@@ -7,7 +7,6 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/export.h>
-#include <linux/module.h>
 #include <linux/namei.h>
 #include <linux/sched.h>
 #include <linux/writeback.h>
@@ -17,9 +16,6 @@
 #include <linux/quotaops.h>
 #include <linux/backing-dev.h>
 #include "internal.h"
-
-bool fsync_enabled = true;
-module_param(fsync_enabled, bool, 0755);
 
 #ifdef CONFIG_DYNAMIC_FSYNC
 #include <linux/dyn_sync_cntrl.h>
@@ -229,9 +225,6 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 	struct super_block *sb;
 	int ret;
 
-	if (!fsync_enabled)
-		return 0;
-
 	if (!f.file)
 		return -EBADF;
 	sb = f.file->f_dentry->d_sb;
@@ -257,8 +250,6 @@ SYSCALL_DEFINE1(syncfs, int, fd)
  */
 int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 {
-	if (!fsync_enabled)
-		return 0;
 #ifdef CONFIG_DYNAMIC_FSYNC
 	if (likely(dyn_fsync_active && suspend_active))
 		return 0;
@@ -279,9 +270,6 @@ EXPORT_SYMBOL(vfs_fsync_range);
  */
 int vfs_fsync(struct file *file, int datasync)
 {
-	if (!fsync_enabled)
-		return 0;
-		
 	return vfs_fsync_range(file, 0, LLONG_MAX, datasync);
 }
 EXPORT_SYMBOL(vfs_fsync);
@@ -290,9 +278,6 @@ static int do_fsync(unsigned int fd, int datasync)
 {
 	struct fd f = fdget(fd);
 	int ret = -EBADF;
-	
-	if (!fsync_enabled)
-		return 0;
 
 	if (f.file) {
 		ret = vfs_fsync(f.file, datasync);
@@ -303,8 +288,6 @@ static int do_fsync(unsigned int fd, int datasync)
 
 SYSCALL_DEFINE1(fsync, unsigned int, fd)
 {
-	if (!fsync_enabled)
-		return 0;
 #ifdef CONFIG_DYNAMIC_FSYNC
 	if (likely(dyn_fsync_active && suspend_active))
 		return 0;
@@ -314,9 +297,7 @@ SYSCALL_DEFINE1(fsync, unsigned int, fd)
 
 SYSCALL_DEFINE1(fdatasync, unsigned int, fd)
 {
-	if (!fsync_enabled)
-		return 0;
-		
+
 #ifdef CONFIG_DYNAMIC_FSYNC
 	if (likely(dyn_fsync_active && suspend_active))
 		return 0;
@@ -334,9 +315,6 @@ SYSCALL_DEFINE1(fdatasync, unsigned int, fd)
  */
 int generic_write_sync(struct file *file, loff_t pos, loff_t count)
 {
-	if (!fsync_enabled)
-		return 0;
-		
 	if (!(file->f_flags & O_DSYNC) && !IS_SYNC(file->f_mapping->host))
 		return 0;
 	return vfs_fsync_range(file, pos, pos + count - 1,
@@ -400,9 +378,7 @@ SYSCALL_DEFINE4(sync_file_range, int, fd, loff_t, offset, loff_t, nbytes,
 	loff_t endbyte;			/* inclusive */
 	umode_t i_mode;
 
-	if (!fsync_enabled)
-		return 0;
-		
+
 #ifdef CONFIG_DYNAMIC_FSYNC
 	if (likely(dyn_fsync_active && suspend_active))
 		return 0;
