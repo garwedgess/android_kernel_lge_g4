@@ -156,9 +156,6 @@ enum zone_stat_item {
 #ifdef CONFIG_PAGE_USAGE
 	NR_USE_PAGES,
 #endif
-#ifdef CONFIG_UKSM
-	NR_UKSM_ZERO_PAGES,
-#endif
 	NR_VM_ZONE_STAT_ITEMS };
 
 /*
@@ -1327,4 +1324,3 @@ static inline int memmap_valid_within(unsigned long pfn,
 #endif /* !__GENERATING_BOUNDS.H */
 #endif /* !__ASSEMBLY__ */
 #endif /* _LINUX_MMZONE_H */
-
